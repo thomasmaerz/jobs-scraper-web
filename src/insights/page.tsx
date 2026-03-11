@@ -119,22 +119,26 @@ export default function InsightsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [totalKeywords, setTotalKeywords] = useState<number | null>(null);
 
   useEffect(() => {
     async function fetchInsights() {
       setLoading(true);
       setError(null);
       try {
-        const { data, error } = await supabase
+        const { data, error, count: totalCount } = await supabase
           .from("keyword_insights")
-          .select("keyword, category, count, last_updated")
-          .order("count", { ascending: false });
+          .select("keyword, category, count, last_updated", { count: "exact" })
+          .order("count", { ascending: false })
+          .gte("count", 2)   // skip low-signal single-occurrence keywords
+          .limit(500);        // top 500 by frequency is plenty for a word cloud
 
         if (error) throw error;
         setAllKeywords(data ?? []);
         if (data && data.length > 0) {
           setLastUpdated(data[0].last_updated ?? null);
         }
+        if (totalCount !== null) setTotalKeywords(totalCount);
       } catch (e: any) {
         setError(e.message ?? "Failed to load insights.");
       } finally {
@@ -164,7 +168,9 @@ export default function InsightsPage() {
         <h1 className="text-2xl font-bold text-gray-900">Job Market Insights</h1>
         <p className="text-gray-500 mt-1">
           Most commonly requested skills, technologies, certifications and attributes across{" "}
-          <span className="font-medium text-gray-700">{allKeywords.length > 0 ? `${counts.all} unique keywords` : "your scraped jobs"}</span>.
+          <span className="font-medium text-gray-700">
+            {totalKeywords !== null ? `${totalKeywords} unique keywords` : "your scraped jobs"}
+          </span>.
           {lastUpdated && (
             <span className="ml-2 text-xs text-gray-400">
               Last updated {new Date(lastUpdated).toLocaleDateString()}
