@@ -12,6 +12,7 @@ import {
   CheckSquare,
   Menu,
   X,
+  BarChart2,
 } from "lucide-react";
 
 export default function Navbar() {
@@ -19,17 +20,14 @@ export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState<boolean>(false);
   const pathname = usePathname();
 
-  // Handle scroll effect for navbar backdrop
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 20);
     };
-
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Close mobile menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
@@ -37,7 +35,6 @@ export default function Navbar() {
         setIsMenuOpen(false);
       }
     };
-
     if (isMenuOpen) {
       document.addEventListener("click", handleClickOutside);
     }
@@ -49,6 +46,7 @@ export default function Navbar() {
     { href: "/jobs/top-matches", icon: <Star size={18} />, text: "Matches" },
     { href: "/jobs/new", icon: <Zap size={18} />, text: "New" },
     { href: "/jobs/applied", icon: <CheckSquare size={18} />, text: "Applied" },
+    { href: "/insights", icon: <BarChart2 size={18} />, text: "Insights" },
     { href: "/profile", icon: <User size={18} />, text: "Profile" },
   ];
 
@@ -63,7 +61,6 @@ export default function Navbar() {
       >
         <div className="container mx-auto px-4 max-w-6xl">
           <nav className="flex justify-between items-center h-16">
-            {/* Minimalist Logo */}
             <Link
               href="/"
               className="flex items-center gap-2 group"
@@ -77,7 +74,6 @@ export default function Navbar() {
               </span>
             </Link>
 
-            {/* Desktop Navigation */}
             <div className="hidden md:flex items-center space-x-1">
               {navItems.map((item) => (
                 <NavItem
@@ -90,7 +86,6 @@ export default function Navbar() {
               ))}
             </div>
 
-            {/* Mobile Menu Button */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -109,7 +104,6 @@ export default function Navbar() {
         </div>
       </header>
 
-      {/* Mobile Navigation Overlay */}
       {isMenuOpen && (
         <div
           className="fixed inset-0 z-40 md:hidden bg-black/10 backdrop-blur-sm"
@@ -117,7 +111,6 @@ export default function Navbar() {
         />
       )}
 
-      {/* Mobile Navigation Menu */}
       <div
         className={`md:hidden fixed top-16 left-0 right-0 z-50 mobile-menu-container transform transition-all duration-200 ease-out ${
           isMenuOpen
@@ -141,7 +134,6 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* Spacer to prevent content from hiding behind fixed navbar */}
       <div className="h-16" />
     </>
   );
@@ -155,7 +147,6 @@ interface NavItemProps {
   onClick?: () => void;
 }
 
-// Clean Desktop Navigation Item
 function NavItem({ href, icon, text, isActive }: NavItemProps) {
   return (
     <Link
@@ -168,8 +159,6 @@ function NavItem({ href, icon, text, isActive }: NavItemProps) {
     >
       <span className="mr-2">{icon}</span>
       <span>{text}</span>
-
-      {/* Subtle active indicator */}
       {isActive && (
         <span className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-slate-900 rounded-full" />
       )}
@@ -177,7 +166,6 @@ function NavItem({ href, icon, text, isActive }: NavItemProps) {
   );
 }
 
-// Clean Mobile Navigation Item
 function MobileNavItem({ href, icon, text, isActive, onClick }: NavItemProps) {
   return (
     <Link
