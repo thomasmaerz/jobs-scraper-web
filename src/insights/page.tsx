@@ -138,7 +138,7 @@ export default function InsightsPage() {
         if (data && data.length > 0) {
           setLastUpdated(data[0].last_updated ?? null);
         }
-        if (totalCount !== null) setTotalKeywords(totalCount);
+        if (rowCount !== null) setTotalKeywords(rowCount);
       } catch (e: any) {
         setError(e.message ?? "Failed to load insights.");
       } finally {
