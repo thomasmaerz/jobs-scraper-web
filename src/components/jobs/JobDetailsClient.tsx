@@ -272,11 +272,14 @@ export default function JobDetailsClient({
                 className="mr-2"
                 fill={job.is_interested === false ? "currentColor" : "none"}
               />
-              Not Interested
-            </button>
-          </div>
-        </div>
-      </div>
+                    Not Interested
+                  </button>
+                </div>
+                  <span className="ml-auto text-xs text-gray-400 self-center">
+                    Scraped {new Date(job.scraped_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
+                  </span>
+              </div>
+            </div>
 
       {/* Scrollable content for description */}
       <div className="p-6">

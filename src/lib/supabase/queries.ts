@@ -2,6 +2,18 @@ import { Job, Resume } from "@/types";
 import { createSupabaseServerClient } from "@/utils/supabase/server";
 import { PostgrestError } from "@supabase/supabase-js";
 
+export type KeywordInsight = {
+  keyword: string;
+  category: string;
+  count: number;
+  last_updated?: string | null;
+};
+
+export type KeywordInsightsResult = {
+  keywords: KeywordInsight[];
+  totalCount: number;
+};
+
 // Helper function to handle Supabase response errors
 async function handleResponse({
   data,
@@ -21,6 +33,24 @@ async function handleResponse({
 }
 
 // --- Query Functions ---
+
+export async function getKeywordInsights(): Promise<KeywordInsightsResult> {
+  const supabase = await createSupabaseServerClient();
+
+  const response = await supabase
+    .from("keyword_insights")
+    .select("keyword, category, count, last_updated", { count: "exact" })
+    .order("count", { ascending: false })
+    .gte("count", 2)
+    .limit(500);
+
+  const data = await handleResponse(response);
+
+  return {
+    keywords: (data ?? []) as KeywordInsight[],
+    totalCount: response.count ?? 0,
+  };
+}
 
 export async function getTopScoredJobs(
   page: number = 1, // Default to page 1

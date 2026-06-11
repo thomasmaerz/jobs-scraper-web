@@ -476,6 +476,9 @@ export default function TopMatchesList({
                     Not Interested
                   </button>
                 </div>
+                  <span className="ml-auto text-xs text-gray-400 self-center">
+                    Scraped {new Date(selectedJob.scraped_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
+                  </span>
               </div>
             </div>
 
