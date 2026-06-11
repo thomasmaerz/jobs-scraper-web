@@ -29,7 +29,7 @@ export async function getTopScoredJobs(
   minScore: number = 50, // Default minScore
   maxScore: number = 100, // Default maxScore
   isInterested?: boolean | null, // Optional interest filter (true, false, or null for 'not marked')
-  searchQuery?: string // Optional search query
+  searchQuery?: string, // Optional search query
 ): Promise<Job[]> {
   const supabase = await createSupabaseServerClient();
 
@@ -61,7 +61,7 @@ export async function getTopScoredJobs(
 
   const response = await supabase.rpc(
     "get_top_scored_jobs_custom_sort",
-    rpcParams
+    rpcParams,
   );
 
   // The existing handleResponse function can be used if it expects { data, error }
@@ -79,7 +79,7 @@ export async function getTopScoredJobsCount(
   minScore: number = 50, // Default minScore
   maxScore: number = 100, // Default maxScore
   isInterested?: boolean | null, // Optional interest filter
-  searchQuery?: string // Optional search query
+  searchQuery?: string, // Optional search query
 ): Promise<number> {
   const supabase = await createSupabaseServerClient();
 
@@ -116,7 +116,7 @@ export async function getTopScoredJobsCount(
     // Assuming you want to search in 'job_title' and 'company' fields
     // Adjust the fields and logic as per your database schema and search requirements
     query = query.or(
-      `job_title.ilike.%${searchQuery}%,company.ilike.%${searchQuery}%`
+      `job_title.ilike.%${searchQuery}%,company.ilike.%${searchQuery}%`,
     ); // Changed 'role' to 'job_title'
   }
 
@@ -137,7 +137,7 @@ export async function getNewJobs(
   minScore: number = 0, // Default minScore (assuming 0 as a base for 'new' jobs if not specified)
   maxScore: number = 100, // Default maxScore
   isInterested?: boolean | null, // Optional interest filter (true, false, or null for 'not marked')
-  searchQuery?: string // Optional search query
+  searchQuery?: string, // Optional search query
 ): Promise<Job[]> {
   const supabase = await createSupabaseServerClient();
 
@@ -173,7 +173,7 @@ export async function getNewJobs(
   // Add search query filter if specified
   if (searchQuery) {
     query = query.or(
-      `job_title.ilike.%${searchQuery}%,company.ilike.%${searchQuery}%`
+      `job_title.ilike.%${searchQuery}%,company.ilike.%${searchQuery}%`,
     );
   }
 
@@ -189,7 +189,7 @@ export async function getAllActiveJobsCount(
   minScore: number = 0, // Default minScore (assuming 0 as a base if not specified)
   maxScore: number = 100, // Default maxScore
   isInterested?: boolean | null, // Optional interest filter
-  searchQuery?: string // Optional search query
+  searchQuery?: string, // Optional search query
 ): Promise<number> {
   const supabase = await createSupabaseServerClient();
 
@@ -220,7 +220,7 @@ export async function getAllActiveJobsCount(
   // Add search query filter if specified
   if (searchQuery) {
     query = query.or(
-      `job_title.ilike.%${searchQuery}%,company.ilike.%${searchQuery}%`
+      `job_title.ilike.%${searchQuery}%,company.ilike.%${searchQuery}%`,
     );
   }
 
@@ -241,7 +241,7 @@ export async function getAppliedJobs(
   searchQuery?: string,
   applicationStatus?: string,
   sortBy?: string, // New: sortBy parameter
-  sortOrder?: string // New: sortOrder parameter (e.g., 'asc' or 'desc')
+  sortOrder?: string, // New: sortOrder parameter (e.g., 'asc' or 'desc')
 ): Promise<Job[]> {
   const supabase = await createSupabaseServerClient();
 
@@ -265,7 +265,7 @@ export async function getAppliedJobs(
 export async function getAppliedJobsCount(
   provider?: string,
   searchQuery?: string,
-  applicationStatus?: string // Add new applicationStatus parameter
+  applicationStatus?: string, // Add new applicationStatus parameter
 ): Promise<number> {
   const supabase = await createSupabaseServerClient();
   // IMPORTANT: Ensure these statuses match those in your RPC and database
@@ -295,7 +295,7 @@ export async function getAppliedJobsCount(
   // Add search query filter if specified
   if (searchQuery) {
     query = query.or(
-      `job_title.ilike.%${searchQuery}%,company.ilike.%${searchQuery}%`
+      `job_title.ilike.%${searchQuery}%,company.ilike.%${searchQuery}%`,
     );
   }
 
@@ -315,7 +315,7 @@ export async function getAppliedJobsCount(
  * @returns A promise that resolves to the number of jobs applied on that date.
  */
 export async function getAppliedJobsCountByDate(
-  localDateString: string
+  localDateString: string,
 ): Promise<number> {
   // localDateString is "YYYY-MM-DD", e.g., "2025-05-21" from server's local TZ
   const supabase = await createSupabaseServerClient();
@@ -353,7 +353,7 @@ export async function getAppliedJobsCountByDate(
   if (error) {
     console.error(
       `Supabase count error (applied jobs on local date ${localDateString}):`,
-      error
+      error,
     );
     throw new Error(error.message);
   }
@@ -383,7 +383,7 @@ export async function getJobById(job_id: string): Promise<Job | null> {
 // New function to update a job by its ID
 export async function updateJobById(
   job_id: string,
-  updates: Partial<Omit<Job, "job_id">>
+  updates: Partial<Omit<Job, "job_id">>,
 ): Promise<Job | null> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
@@ -414,7 +414,7 @@ export async function updateJobById(
  * @returns A promise that resolves to the Resume object or null if not found.
  */
 export async function getCustomizedResumeById(
-  resume_id: string
+  resume_id: string,
 ): Promise<Resume | null> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
@@ -439,7 +439,7 @@ export async function getCustomizedResumeById(
  */
 export async function updateCustomizedResumeById(
   resume_id: string,
-  updates: Partial<Omit<Resume, "id" | "created_at" | "last_updated">> // Exclude system-managed fields from direct update via this function
+  updates: Partial<Omit<Resume, "id" | "created_at" | "last_updated">>, // Exclude system-managed fields from direct update via this function
 ): Promise<Resume | null> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
@@ -453,7 +453,7 @@ export async function updateCustomizedResumeById(
     if (error.code === "PGRST116") {
       // Row not found
       console.warn(
-        `Customized resume with ID ${resume_id} not found for update.`
+        `Customized resume with ID ${resume_id} not found for update.`,
       );
       return null;
     }
@@ -473,15 +473,15 @@ export async function updateCustomizedResumeById(
  */
 export async function uploadPersonalizedResume(
   fileName: string,
-  file: File
-): Promise<{ publicUrl: string }> {
+  file: File,
+): Promise<string> {
   const supabase = await createSupabaseServerClient();
-  const filePath = `personalized_resumes/${fileName}`;
+  const filePath = fileName;
 
   console.log("Uploading file to path:", filePath);
 
   const { data: uploadData, error: uploadError } = await supabase.storage
-    .from("resumes") // Your specified bucket name
+    .from("personalized_resumes") // Updated bucket name
     .upload(filePath, file, {
       upsert: true, // Overwrite if file already exists
     });
@@ -489,64 +489,94 @@ export async function uploadPersonalizedResume(
   if (uploadError) {
     console.error("Supabase storage upload error:", uploadError);
     throw new Error(
-      `Failed to upload personalized resume: ${uploadError.message}`
+      `Failed to upload personalized resume: ${uploadError.message}`,
     );
   }
 
   if (!uploadData || !uploadData.path) {
     console.error(
-      "Supabase storage upload error: No path returned despite no error."
+      "Supabase storage upload error: No path returned despite no error.",
     );
     throw new Error(
-      "Failed to upload personalized resume: No path returned from storage."
+      "Failed to upload personalized resume: No path returned from storage.",
     );
   }
 
-  // Get the public URL of the uploaded file
-  const { data: publicUrlData } = supabase.storage
-    .from("resumes")
-    .getPublicUrl(uploadData.path);
-
-  if (!publicUrlData || !publicUrlData.publicUrl) {
-    console.error(
-      "Supabase storage error: Could not retrieve public URL for uploaded file."
-    );
-    // It might be useful to also log uploadData.path here for debugging
-    throw new Error(
-      "Failed to get public URL for personalized resume. The file was uploaded, but its URL could not be retrieved."
-    );
-  }
-
-  return { publicUrl: publicUrlData.publicUrl };
+  return fileName;
 }
 
 /**
- * Retrieves the user profile from the 'resumes' table using the email from NEXT_PUBLIC_USER_EMAIL.
- * @returns A promise that resolves to the Resume object or null if not found or email is not set.
+ * Retrieves the user profile from the 'base_resume' table.
+ * Fetches the latest row as per the backend architecture.
+ * @returns A promise that resolves to the Resume object or null if not found.
  */
 export async function getUserProfileByEmail(): Promise<Resume | null> {
   const supabase = await createSupabaseServerClient();
-  const email = process.env.NEXT_PUBLIC_USER_EMAIL;
 
-  if (!email) {
-    console.error(
-      "User email (NEXT_PUBLIC_USER_EMAIL) is not set in environment variables."
-    );
-    return null;
-  }
-
+  // Fetch the latest base resume from the 'base_resume' table
+  // This follows the backend's architecture of keeping a single/latest base resume.
   const { data, error } = await supabase
-    .from("resumes") // Assuming 'resumes' is the table for general user profiles
-    .select("*")
-    .eq("email", email)
+    .from("base_resume")
+    .select("resume_data")
+    .order("created_at", { ascending: false })
+    .limit(1)
     .single();
 
-  if (error && error.code !== "PGRST116") {
-    // PGRST116: Row not found, which is okay for single()
-    console.error("Supabase error fetching user profile by email:", error);
+  if (error) {
+    if (error.code === "PGRST116") {
+      // PGRST116: Row not found, which is okay
+      console.warn("No base resume found in the 'base_resume' table.");
+      return null;
+    }
+    console.error("Supabase error fetching base resume:", error);
     throw new Error(error.message);
   }
-  return data as Resume | null;
+
+  return (data as any)?.resume_data as Resume | null;
+}
+
+/**
+ * Updates the base resume data in the 'base_resume' table.
+ * Finds the latest row and updates its resume_data JSONB column.
+ * @param resumeData The full Resume data object to save.
+ * @returns The updated Resume data or null.
+ */
+export async function updateBaseResume(
+  resumeData: Omit<Resume, "id" | "created_at" | "parsed_at" | "last_updated" | "resume_link">,
+): Promise<Resume | null> {
+  const supabase = await createSupabaseServerClient();
+
+  // First, find the latest base resume row ID
+  const { data: existing, error: fetchError } = await supabase
+    .from("base_resume")
+    .select("id")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (fetchError) {
+    if (fetchError.code === "PGRST116") {
+      console.warn("No base resume found to update.");
+      return null;
+    }
+    console.error("Error fetching base resume for update:", fetchError);
+    throw new Error(fetchError.message);
+  }
+
+  // Update the resume_data JSONB column
+  const { data, error } = await supabase
+    .from("base_resume")
+    .update({ resume_data: resumeData })
+    .eq("id", existing.id)
+    .select("resume_data")
+    .single();
+
+  if (error) {
+    console.error("Error updating base resume:", error);
+    throw new Error(error.message);
+  }
+
+  return (data as any)?.resume_data as Resume | null;
 }
 
 // --- New Count Functions ---

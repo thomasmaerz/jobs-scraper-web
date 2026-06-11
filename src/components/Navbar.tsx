@@ -134,7 +134,8 @@ export default function Navbar() {
         </div>
       </div>
 
-      <div className="h-16" />
+      {/* Spacer to prevent content from hiding behind fixed navbar */}
+      <div className="h-16 flex-shrink-0" />
     </>
   );
 }

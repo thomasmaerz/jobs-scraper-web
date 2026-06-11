@@ -1,4 +1,4 @@
-"use client"; // Ensure this is a client component
+"use client";
 
 import {
   Resume,
@@ -8,9 +8,11 @@ import {
   Certification,
   Links,
 } from "@/types";
-import axios from "axios";
-import { useRouter } from "next/navigation";
-import { useState, useEffect, ChangeEvent, FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useEffect, FormEvent } from "react";
+import { Loader2, Save, X, FileText } from "lucide-react";
+import { Toast } from "./ResumeFormUI";
+import { ResumeFormFields } from "./ResumeFormFields";
 
 interface ResumeEditProps {
   resumeData: Resume;
@@ -22,217 +24,60 @@ export default function ResumeEditClient({
   job_id,
 }: ResumeEditProps) {
   const [formData, setFormData] = useState<Resume>(resumeData);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [toast, setToast] = useState<{
+    message: string;
+    type: "success" | "error";
+  } | null>(null);
+
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
-    // Update formData if the initial resumeData prop changes
     setFormData(resumeData);
   }, [resumeData]);
 
-  const handleChange = (
-    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  // --- Field change handlers for ResumeFormFields ---
+  const updateField = (field: keyof Resume, value: any) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const updateNestedField = <T extends object>(
+    section: keyof Resume,
+    index: number,
+    field: keyof T,
+    value: string,
   ) => {
-    const { name, value } = e.target;
-    setFormData((prevData) => ({
-      ...prevData,
-      [name]: value,
+    setFormData((prev) => {
+      const arr = [...(prev[section] as any[])];
+      arr[index] = { ...arr[index], [field]: value };
+      return { ...prev, [section]: arr };
+    });
+  };
+
+  const updateLinkField = (field: keyof Links, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      links: { ...prev.links, [field]: value },
     }));
   };
 
-  const handleNestedChange = (
-    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-    section: keyof Resume,
-    index?: number,
-    field?: keyof any // Used for arrays of objects or simple objects like Links
-  ) => {
-    const { name, value } = e.target;
+  const addArrayItem = (section: keyof Resume, template: object) => {
+    setFormData((prev) => ({
+      ...prev,
+      [section]: [...(prev[section] as any[]), template],
+    }));
+  };
 
-    setFormData((prevData) => {
-      const newData = { ...prevData };
-      const currentSection = newData[section];
-
-      if (Array.isArray(currentSection) && index !== undefined && field) {
-        // Handle arrays of objects (Education, Experience, etc.)
-        const newArray = [...currentSection];
-        if (newArray[index]) {
-          newArray[index] = { ...newArray[index], [field as string]: value };
-          (newData[section] as any) = newArray;
-        }
-      } else if (
-        typeof currentSection === "object" &&
-        !Array.isArray(currentSection) &&
-        field
-      ) {
-        // Handle simple objects (Links)
-        (newData[section] as any) = {
-          ...(currentSection as object),
-          [field as string]: value,
-        };
-      } else {
-        // For top-level fields or JSON textareas
-        (newData[section] as any) = value;
-      }
-      return newData;
+  const removeArrayItem = (section: keyof Resume, index: number) => {
+    setFormData((prev) => {
+      const arr = [...(prev[section] as any[])];
+      arr.splice(index, 1);
+      return { ...prev, [section]: arr };
     });
   };
 
-  // Specific handler for JSON textareas (skills, languages, and initially for arrays)
-  const handleJsonTextareaChange = (
-    e: ChangeEvent<HTMLTextAreaElement>,
-    field: keyof Resume
-  ) => {
-    const { value } = e.target;
-    setFormData((prevData) => {
-      try {
-        // For fields that are expected to be objects or arrays from JSON
-        if (
-          field === "skills" ||
-          field === "education" ||
-          field === "experience" ||
-          field === "projects" ||
-          field === "certifications" ||
-          field === "languages"
-        ) {
-          const parsedValue = JSON.parse(value);
-          return { ...prevData, [field]: parsedValue };
-        }
-        return { ...prevData, [field]: value };
-      } catch (err) {
-        console.warn(`Invalid JSON for field ${field}:`, value);
-        return { ...prevData, [field]: value };
-      }
-    });
-  };
-
-  const handleSave = async (e: FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError(null);
-    setSuccessMessage(null);
-
-    const { id, created_at, parsed_at, ...updateData } = formData;
-
-    const finalUpdateData = { ...updateData };
-    (
-      Object.keys(finalUpdateData) as Array<keyof typeof finalUpdateData>
-    ).forEach((key) => {
-      if (typeof finalUpdateData[key] === "string") {
-        if (
-          key === "skills" ||
-          key === "education" ||
-          key === "experience" ||
-          key === "projects" ||
-          key === "certifications" ||
-          key === "languages" ||
-          key === "links"
-        ) {
-          try {
-            (finalUpdateData as any)[key] = JSON.parse(
-              finalUpdateData[key] as string
-            );
-          } catch (parseError) {
-            console.error(
-              `Failed to parse JSON for ${key} before saving. Saving as string.`,
-              parseError
-            );
-            // Decide how to handle: save as string, show error, or skip update for this field
-          }
-        }
-      }
-    });
-
-    try {
-      // Generate PDF
-      const generatedPdfUrl = await generateResumePdf(formData);
-
-      if (generatedPdfUrl) {
-        finalUpdateData.resume_link = generatedPdfUrl;
-      } else {
-        console.warn(
-          "PDF generation/upload failed. Proceeding to save other resume data without PDF link."
-        );
-      }
-
-      const response = await fetch(`/api/customized_resumes/${id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(
-          finalUpdateData as Partial<
-            Omit<Resume, "id" | "created_at" | "last_updated">
-          >
-        ),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        const errorMessage =
-          errorData?.error || `HTTP error! status: ${response.status}`;
-        throw new Error(errorMessage);
-      }
-
-      const updatedResume: Resume = await response.json();
-
-      if (updatedResume) {
-        setFormData(updatedResume); // Update form with data from server (e.g., if server modifies it)
-        setSuccessMessage("Resume updated successfully!");
-        router.push(`/jobs/${job_id}/resumes/${id}`);
-      } else {
-        setError(
-          "Failed to update resume. The resume might not have been found or an unknown error occurred."
-        );
-      }
-    } catch (err) {
-      console.error("Error updating resume:", err);
-      setError(
-        err instanceof Error ? err.message : "An unexpected error occurred."
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const renderArrayField = <T extends object>(
-    sectionName: keyof Resume,
-    items: T[],
-    fields: Array<keyof T>
-  ) => {
-    return (items as any[]).map((item, index) => (
-      <div
-        key={`${String(sectionName)}-${index}`}
-        className="mb-4 p-3 border rounded-md"
-      >
-        <h4 className="font-semibold capitalize mb-2">
-          {String(sectionName).slice(0, -1)} {index + 1}
-        </h4>
-        {fields.map((field) => (
-          <div key={String(field)} className="mb-2">
-            <label
-              htmlFor={`${String(sectionName)}-${index}-${String(field)}`}
-              className="block text-sm font-medium text-gray-700 capitalize"
-            >
-              {String(field).replace(/_/g, " ")}
-            </label>
-            <input
-              type="text"
-              name={`${String(sectionName)}-${index}-${String(field)}`}
-              id={`${String(sectionName)}-${index}-${String(field)}`}
-              value={(item as any)[field] || ""}
-              onChange={(e) =>
-                handleNestedChange(e, sectionName, index, field as keyof any)
-              }
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-            />
-          </div>
-        ))}
-      </div>
-    ));
-  };
-
+  // --- PDF generation and Upload logic ---
   async function generateResumePdf(resumeDataForPdf: Resume) {
     const {
       id,
@@ -244,36 +89,37 @@ export default function ResumeEditClient({
     } = resumeDataForPdf;
 
     try {
-      const pdfResponse = await axios.post(
-        "https://generate-pdf-resume-production.up.railway.app/generate-resume/",
-        cleanedResumeDataForPdf,
-        {
-          responseType: "blob", // PDF is binary
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      // 2. Store the PDF blob in a variable
-      const pdfBlob = pdfResponse.data;
-
-      // 3. Convert blob to File (for Supabase upload)
-      const fileName = `resume_${job_id}.pdf`;
-      const file = new File([pdfBlob], fileName, {
-        type: "application/pdf",
+      // Generate PDF using local API route
+      const pdfResponse = await fetch("/api/generate-resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cleanedResumeDataForPdf),
       });
 
-      // Step 3: Upload the file using the new API endpoint
+      if (!pdfResponse.ok) {
+        const errorData = await pdfResponse.json().catch(() => ({
+          error: "PDF generation failed",
+        }));
+        throw new Error(
+          errorData.error || `Failed to generate PDF: ${pdfResponse.status}`,
+        );
+      }
+
+      // Get the PDF blob from the response
+      const pdfBlob = await pdfResponse.blob();
+
+      // Convert blob to File (for Supabase upload)
+      const fileName = `resume_${job_id}.pdf`;
+      const file = new File([pdfBlob], fileName, { type: "application/pdf" });
+
+      // Upload the file using the existing API endpoint
       const formDataToUpload = new FormData();
       formDataToUpload.append("file", file);
       formDataToUpload.append("fileName", fileName);
 
       const uploadResponse = await fetch(`/api/customized_resumes/${id}/`, {
-        // Using job_id from props
         method: "POST",
         body: formDataToUpload,
-        // Headers for FormData (like Content-Type: multipart/form-data) are set automatically by the browser
       });
 
       if (!uploadResponse.ok) {
@@ -282,257 +128,202 @@ export default function ResumeEditClient({
           details: `HTTP status: ${uploadResponse.status}`,
         }));
         throw new Error(
-          errorData.error || `Failed to upload PDF: ${errorData.details}`
+          errorData.error || `Failed to upload PDF: ${errorData.details}`,
         );
       }
 
-      const { publicUrl } = await uploadResponse.json();
-      console.log(
-        "Uploaded personalized resume via API, public URL:",
-        publicUrl
-      );
-      return publicUrl;
+      const { fileName: uploadedFileName } = await uploadResponse.json();
+      return uploadedFileName;
     } catch (error) {
-      console.error(
-        "Error in generateResumePdf (generating or uploading PDF):",
-        error
-      );
-      setError(
-        // Assuming setError is available in this scope (it is, as part of ResumeEditClient)
-        error instanceof Error
-          ? `Failed to generate or upload resume: ${error.message}`
-          : "An unexpected error occurred while generating/uploading the resume."
-      );
-      return undefined;
+      console.error("Error generating/uploading PDF:", error);
+      throw error;
     }
   }
 
-  return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-6">Edit Resume</h1>
-      {error && (
-        <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">{error}</div>
-      )}
-      {successMessage && (
-        <div className="mb-4 p-3 bg-green-100 text-green-700 rounded">
-          {successMessage}
-        </div>
-      )}
+  // --- Save Logic ---
+  const handleSave = async () => {
+    setIsSaving(true);
+    setToast(null);
 
-      <form onSubmit={handleSave} className="space-y-6">
-        <div>
-          <label
-            htmlFor="name"
-            className="block text-sm font-medium text-gray-700"
-          >
-            Name
-          </label>
-          <input
-            type="text"
-            name="name"
-            id="name"
-            value={formData.name}
-            onChange={handleChange}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-          />
-        </div>
+    const { id, created_at, parsed_at, ...updateData } = formData;
+    const finalUpdateData = { ...updateData };
 
-        <div>
-          <label
-            htmlFor="email"
-            className="block text-sm font-medium text-gray-700"
-          >
-            Email
-          </label>
-          <input
-            type="email"
-            name="email"
-            id="email"
-            value={formData.email}
-            onChange={handleChange}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-          />
-        </div>
-
-        <div>
-          <label
-            htmlFor="phone"
-            className="block text-sm font-medium text-gray-700"
-          >
-            Phone
-          </label>
-          <input
-            type="tel"
-            name="phone"
-            id="phone"
-            value={formData.phone}
-            onChange={handleChange}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-          />
-        </div>
-
-        <div>
-          <label
-            htmlFor="location"
-            className="block text-sm font-medium text-gray-700"
-          >
-            Location
-          </label>
-          <input
-            type="text"
-            name="location"
-            id="location"
-            value={formData.location}
-            onChange={handleChange}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-          />
-        </div>
-
-        <div>
-          <label
-            htmlFor="summary"
-            className="block text-sm font-medium text-gray-700"
-          >
-            Summary
-          </label>
-          <textarea
-            name="summary"
-            id="summary"
-            rows={4}
-            value={formData.summary}
-            onChange={handleChange}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-          />
-        </div>
-
-        {/* Skills (as JSON) */}
-        <div>
-          <label
-            htmlFor="skills"
-            className="block text-sm font-medium text-gray-700"
-          >
-            Skills (JSON format)
-          </label>
-          <textarea
-            name="skills"
-            id="skills"
-            rows={5}
-            value={
-              typeof formData.skills === "string"
-                ? formData.skills
-                : JSON.stringify(formData.skills, null, 2)
-            }
-            onChange={(e) => handleJsonTextareaChange(e, "skills")}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-mono"
-            placeholder='e.g., { "Programming": ["JavaScript", "Python"], "Tools": ["Git", "Docker"] }'
-          />
-        </div>
-
-        {/* Education Section */}
-        <fieldset className="border p-4 rounded-md">
-          <legend className="text-lg font-semibold">Education</legend>
-          {renderArrayField<Education>("education", formData.education, [
-            "degree",
-            "field_of_study",
-            "institution",
-            "start_year",
-            "end_year",
-          ])}
-          {/* Add button for new education entry would go here */}
-        </fieldset>
-
-        {/* Experience Section */}
-        <fieldset className="border p-4 rounded-md">
-          <legend className="text-lg font-semibold">Experience</legend>
-          {renderArrayField<Experience>("experience", formData.experience, [
-            "job_title",
-            "company",
-            "location",
-            "start_date",
-            "end_date",
-            "description",
-          ])}
-          {/* Add button for new experience entry would go here */}
-        </fieldset>
-
-        {/* Projects Section */}
-        <fieldset className="border p-4 rounded-md">
-          <legend className="text-lg font-semibold">Projects</legend>
-          {renderArrayField<Project>("projects", formData.projects, [
-            "name",
-            "description",
-            "technologies",
-          ])}
-          {/* Add button for new project entry would go here */}
-        </fieldset>
-
-        {/* Certifications Section */}
-        <fieldset className="border p-4 rounded-md">
-          <legend className="text-lg font-semibold">Certifications</legend>
-          {renderArrayField<Certification>(
+    // Parse JSON strings to objects if necessary
+    (
+      Object.keys(finalUpdateData) as Array<keyof typeof finalUpdateData>
+    ).forEach((key) => {
+      if (typeof finalUpdateData[key] === "string") {
+        if (
+          [
+            "skills",
+            "education",
+            "experience",
+            "projects",
             "certifications",
-            formData.certifications,
-            ["name", "issuer", "year"]
-          )}
-          {/* Add button for new certification entry would go here */}
-        </fieldset>
+            "languages",
+            "links",
+          ].includes(key)
+        ) {
+          try {
+            (finalUpdateData as any)[key] = JSON.parse(
+              finalUpdateData[key] as string,
+            );
+          } catch (e) {
+            // Ignore parse errors, keep as string
+          }
+        }
+      }
+    });
 
-        {/* Languages (as JSON array) */}
-        <div>
-          <label
-            htmlFor="languages"
-            className="block text-sm font-medium text-gray-700"
-          >
-            Languages (JSON array format)
-          </label>
-          <textarea
-            name="languages"
-            id="languages"
-            rows={3}
-            value={
-              typeof formData.languages === "string"
-                ? formData.languages
-                : JSON.stringify(formData.languages, null, 2)
-            }
-            onChange={(e) => handleJsonTextareaChange(e, "languages")}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm font-mono"
-            placeholder='e.g., [{ "language": "English", "proficiency": "Native" }, { "language": "Spanish", "proficiency": "Fluent" }]'
-          />
+    try {
+      // 1. Generate new PDF and upload it to Supabase Storage
+      try {
+        const generatedPdfUrl = await generateResumePdf(formData);
+        if (generatedPdfUrl) {
+          finalUpdateData.resume_link = generatedPdfUrl;
+        }
+      } catch (pdfError) {
+        console.warn(
+          "PDF generation/upload failed. Saving data only.",
+          pdfError,
+        );
+        // Continue saving even if PDF generation fails.
+      }
+
+      // 2. Patch the database record
+      const response = await fetch(`/api/customized_resumes/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          finalUpdateData as Partial<
+            Omit<Resume, "id" | "created_at" | "last_updated">
+          >,
+        ),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(
+          errorData?.error || `HTTP error! status: ${response.status}`,
+        );
+      }
+
+      const updatedResume: Resume = await response.json();
+      if (updatedResume) {
+        setFormData(updatedResume);
+        setToast({ message: "Resume updated successfully!", type: "success" });
+        // Navigate back to view page after a short delay so user sees toast
+        setTimeout(() => {
+          const params = searchParams.toString();
+          const query = params ? `?${params}` : "";
+          router.push(`/jobs/${job_id}/resumes/${id}${query}`);
+        }, 1500);
+      } else {
+        throw new Error("Failed to update resume.");
+      }
+    } catch (err) {
+      console.error("Error updating resume:", err);
+      setToast({
+        message:
+          err instanceof Error ? err.message : "An unexpected error occurred",
+        type: "error",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    const params = searchParams.toString();
+    const query = params ? `?${params}` : "";
+    router.push(`/jobs/${job_id}/resumes/${resumeData.id}${query}`);
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6 pb-20 mt-8">
+      {/* Toast */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+
+      {/* Edit Header */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            <FileText size={18} className="text-navy-600" />
+            <h1 className="text-xl font-bold text-slate-900">
+              Edit Custom Resume
+            </h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCancel}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-all"
+            >
+              <X size={14} /> Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-navy-600 rounded-lg hover:bg-navy-700 transition-all shadow-sm disabled:opacity-50"
+            >
+              {isSaving ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Save size={14} />
+              )}
+              {isSaving ? "Saving..." : "Save"}
+            </button>
+          </div>
         </div>
 
-        {/* Links */}
-        <fieldset className="border p-4 rounded-md">
-          <legend className="text-lg font-semibold">Links</legend>
-          {(Object.keys(formData.links) as Array<keyof Links>).map((key) => (
-            <div key={key} className="mb-2">
-              <label
-                htmlFor={`links-${key}`}
-                className="block text-sm font-medium text-gray-700 capitalize"
-              >
-                {key}
-              </label>
-              <input
-                type="url"
-                name={`links-${key}`}
-                id={`links-${key}`}
-                value={formData.links[key] || ""}
-                onChange={(e) => handleNestedChange(e, "links", undefined, key)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-              />
-            </div>
-          ))}
-        </fieldset>
+        <p className="text-sm text-slate-500 mb-2">
+          Editing this tailored resume will automatically generate a new PDF
+          cover letter and save it to the job prospect.
+        </p>
+      </div>
 
-        <div>
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-          >
-            {isLoading ? "Saving..." : "Save Changes"}
-          </button>
+      <ResumeFormFields
+        formData={formData}
+        updateField={updateField}
+        updateNestedField={updateNestedField}
+        updateLinkField={updateLinkField}
+        addArrayItem={addArrayItem}
+        removeArrayItem={removeArrayItem}
+      />
+
+      {/* Bottom action bar — fixed at bottom of viewport */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-sm border-t border-gray-200 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
+        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+          <span className="text-xs text-slate-400">
+            Changes are not saved until you click &quot;Save&quot;
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCancel}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-all"
+            >
+              <X size={14} /> Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="inline-flex items-center gap-1.5 px-5 py-2 text-sm font-medium text-white bg-navy-600 rounded-lg hover:bg-navy-700 transition-all shadow-sm disabled:opacity-50"
+            >
+              {isSaving ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Save size={14} />
+              )}
+              {isSaving ? "Saving..." : "Save"}
+            </button>
+          </div>
         </div>
-      </form>
+      </div>
     </div>
   );
 }

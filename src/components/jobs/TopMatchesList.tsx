@@ -49,6 +49,14 @@ export default function TopMatchesList({
     // and there are jobs in the list, default to the first job.
     if (!jobToSelect && jobs.length > 0) {
       jobToSelect = jobs[0];
+      // Update URL with the default selected job ID if it's missing
+      if (!selectedJobIdFromUrl) {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set("selectedJobId", jobToSelect.job_id);
+        router.replace(`${window.location.pathname}?${params.toString()}`, {
+          scroll: false,
+        });
+      }
     }
     // If jobs list is empty, ensure jobToSelect is null.
     else if (jobs.length === 0) {
@@ -64,13 +72,14 @@ export default function TopMatchesList({
 
   const handleViewResume = (
     job_id: string,
-    resume_id: string | null | undefined
+    resume_id: string | null | undefined,
   ) => {
-    // Preserve current page and selected job when navigating away
+    // Preserve current search params and add source page info
     const params = new URLSearchParams(searchParams.toString());
     if (selectedJob) {
       params.set("selectedJobId", selectedJob.job_id);
     }
+    params.set("source", window.location.pathname);
     router.push(`/jobs/${job_id}/resumes/${resume_id}?${params.toString()}`);
   };
 
@@ -167,8 +176,8 @@ export default function TopMatchesList({
         finalInterestValue === true
           ? "Marked as interested"
           : finalInterestValue === false
-          ? "Marked as not interested"
-          : "Interest status cleared";
+            ? "Marked as not interested"
+            : "Interest status cleared";
       showToast(message, "success");
       router.refresh(); // Refresh the page to show updated jobs
     } catch (error) {
@@ -264,7 +273,7 @@ export default function TopMatchesList({
                     {job.resume_score && (
                       <div
                         className={`flex-shrink-0 ml-2 px-2.5 py-0.5 rounded-full text-xs font-medium border ${getScoreBadgeColor(
-                          job.resume_score
+                          job.resume_score,
                         )}`}
                       >
                         {job.resume_score}
@@ -394,7 +403,7 @@ export default function TopMatchesList({
                     onClick={() =>
                       handleViewResume(
                         selectedJob.job_id,
-                        selectedJob.customized_resume_id
+                        selectedJob.customized_resume_id,
                       )
                     }
                     className="inline-flex items-center px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-md hover:bg-emerald-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"

@@ -37,6 +37,7 @@ export default function JobDetailsClient({
   ) => {
     const params = new URLSearchParams(searchParams.toString());
     // Optionally preserve other query params if needed when navigating
+    params.set("source", window.location.pathname);
     router.push(`/jobs/${job_id}/resumes/${resume_id}?${params.toString()}`);
   };
 

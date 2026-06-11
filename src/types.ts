@@ -68,12 +68,12 @@ export interface Resume {
   phone: string;
   location: string;
   summary: string;
-  skills: Record<string, any>; // Keep generic or define more specific skill structure if known
+  skills: string[]; 
   education: Education[];
   experience: Experience[];
   projects: Project[];
   certifications: Certification[];
-  languages: Record<string, any>[]; // Keep generic or define language structure if known
+  languages: string[];
   links: Links; // Changed to single object based on Python model
   parsed_at: string;
   last_updated?: string; // Optional field for last update timestamp

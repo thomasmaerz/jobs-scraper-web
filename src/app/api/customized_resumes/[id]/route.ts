@@ -8,7 +8,7 @@ import { Resume } from "@/types";
 // Handler for PATCH requests to update a resume
 export async function PATCH(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params;
@@ -20,7 +20,7 @@ export async function PATCH(
     if (!updates || Object.keys(updates).length === 0) {
       return NextResponse.json(
         { error: "Update payload is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -29,7 +29,7 @@ export async function PATCH(
     if (!updatedResume) {
       return NextResponse.json(
         { error: `Resume with ID ${id} not found or update failed` },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -40,7 +40,7 @@ export async function PATCH(
       error instanceof Error ? error.message : "An unknown error occurred";
     return NextResponse.json(
       { error: "Failed to update resume", details: errorMessage },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -48,14 +48,14 @@ export async function PATCH(
 // New Handler for POST requests to upload a personalized resume PDF
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params;
     if (!id) {
       return NextResponse.json(
         { error: "Filename is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -66,20 +66,20 @@ export async function POST(
     if (!file) {
       return NextResponse.json(
         { error: "File is required in formData" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const { publicUrl } = await uploadPersonalizedResume(fileName, file);
+    const savedFileName = await uploadPersonalizedResume(fileName, file);
 
-    return NextResponse.json({ publicUrl }, { status: 200 });
+    return NextResponse.json({ fileName: savedFileName }, { status: 200 });
   } catch (error) {
     console.error("API Error uploading personalized resume:", error);
     const errorMessage =
       error instanceof Error ? error.message : "An unknown error occurred";
     return NextResponse.json(
       { error: "Failed to upload personalized resume", details: errorMessage },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
