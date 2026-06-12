@@ -1,6 +1,10 @@
 import { Job, Resume } from "@/types";
 import { createSupabaseServerClient } from "@/utils/supabase/server";
 import { PostgrestError } from "@supabase/supabase-js";
+import {
+  getNextKeywordInsightsRange,
+  shouldContinueKeywordInsightsFetch,
+} from "./keywordInsightsPagination";
 
 export type KeywordInsight = {
   keyword: string;
@@ -37,18 +41,48 @@ async function handleResponse({
 export async function getKeywordInsights(): Promise<KeywordInsightsResult> {
   const supabase = await createSupabaseServerClient();
 
-  const response = await supabase
-    .from("keyword_insights")
-    .select("keyword, category, count, last_updated", { count: "exact" })
-    .order("count", { ascending: false })
-    .gte("count", 2)
-    .limit(500);
+  // "All" must truly mean all matching keywords; fetch in batches to avoid silent truncation.
+  const batchSize = 1000;
+  let offset = 0;
+  let totalCount: number | null = null;
+  const keywords: KeywordInsight[] = [];
 
-  const data = await handleResponse(response);
+  while (true) {
+    const { from, to } = getNextKeywordInsightsRange(offset, batchSize);
+
+    const response = await supabase
+      .from("keyword_insights")
+      .select("keyword, category, count, last_updated", { count: "exact" })
+      .order("count", { ascending: false })
+      .order("keyword", { ascending: true })
+      .gte("count", 2)
+      .range(from, to);
+
+    const data = ((await handleResponse(response)) ?? []) as KeywordInsight[];
+
+    if (totalCount === null) {
+      totalCount = response.count ?? null;
+    }
+
+    keywords.push(...data);
+
+    if (
+      !shouldContinueKeywordInsightsFetch({
+        accumulatedCount: keywords.length,
+        batchCount: data.length,
+        batchSize,
+        totalCount,
+      })
+    ) {
+      break;
+    }
+
+    offset += batchSize;
+  }
 
   return {
-    keywords: (data ?? []) as KeywordInsight[],
-    totalCount: response.count ?? 0,
+    keywords,
+    totalCount: totalCount ?? keywords.length,
   };
 }
 
