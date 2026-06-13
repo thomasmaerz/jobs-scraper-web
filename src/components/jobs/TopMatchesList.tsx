@@ -17,7 +17,11 @@ import {
 import MarkdownRenderer from "./MarkdownRenderer";
 import { Job } from "@/types";
 import { useRouter, useSearchParams } from "next/navigation"; // Added useSearchParams
-import { formatSalary, getExternalJobUrl } from "@/lib/jobs/formatters";
+import {
+  formatSalary,
+  getExternalJobUrl,
+  sanitizeExternalUrl,
+} from "@/lib/jobs/formatters";
 import {
   getRepostSummary,
   getSortedListingInstances,
@@ -236,6 +240,10 @@ export default function TopMatchesList({
   const selectedJobListingHistory = selectedJob
     ? getSortedListingInstances(selectedJob)
     : [];
+  const selectedJobUrl = selectedJob ? getExternalJobUrl(selectedJob) : null;
+  const selectedRecruiterProfileUrl = selectedJob
+    ? sanitizeExternalUrl(selectedJob.recruiter_profile_url)
+    : null;
 
   return (
     <div className="flex flex-col md:flex-row gap-6 h-[calc(100vh-17.5rem)] bg-gray-50 rounded-lg overflow-hidden shadow-sm">
@@ -416,15 +424,17 @@ export default function TopMatchesList({
 
               {/* Action buttons */}
               <div className="flex flex-wrap gap-3 mt-5">
-                <Link
-                  href={getExternalJobUrl(selectedJob)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                >
-                  View Job Listing
-                  <ExternalLink size={16} className="ml-2" />
-                </Link>
+                {selectedJobUrl && (
+                  <Link
+                    href={selectedJobUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    View Job Listing
+                    <ExternalLink size={16} className="ml-2" />
+                  </Link>
+                )}
 
                 {selectedJob.resume_link && (
                   <button
@@ -515,11 +525,11 @@ export default function TopMatchesList({
               </div>
             </div>
 
-            {(selectedJob.recruiter_profile_url || hasReposts(selectedJob)) && (
+            {(selectedRecruiterProfileUrl || hasReposts(selectedJob)) && (
               <div className="px-6 pt-4 space-y-4">
-                {selectedJob.recruiter_profile_url && (
+                {selectedRecruiterProfileUrl && (
                   <a
-                    href={selectedJob.recruiter_profile_url}
+                    href={selectedRecruiterProfileUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-sm text-indigo-600 hover:text-indigo-800"

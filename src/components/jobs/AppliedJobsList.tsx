@@ -158,6 +158,7 @@ export default function AppliedJobsList({
           {jobs.map((job) => {
             const statusInfo = getStatusInfo(job.status || "applied");
             const StatusIcon = statusInfo.icon;
+            const externalJobUrl = getExternalJobUrl(job);
 
             return (
               <div
@@ -217,15 +218,18 @@ export default function AppliedJobsList({
                       <Info size={14} className="mr-1.5" /> {/* <-- Add Icon */}
                       View Details
                     </Link>
-                    <Link
-                      href={getExternalJobUrl(job)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center px-3 py-1.5 bg-white border border-gray-300 text-gray-700 text-sm rounded-md hover:bg-gray-50 transition-colors"
-                    >
-                      View Job Posting {/* <-- Changed text for clarity */}
-                      <ExternalLink size={14} className="ml-1.5" />
-                    </Link>
+
+                    {externalJobUrl && (
+                      <Link
+                        href={externalJobUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center px-3 py-1.5 bg-white border border-gray-300 text-gray-700 text-sm rounded-md hover:bg-gray-50 transition-colors"
+                      >
+                        View Job Posting
+                        <ExternalLink size={14} className="ml-1.5" />
+                      </Link>
+                    )}
 
                     {job.customized_resume_id && (
                       <button

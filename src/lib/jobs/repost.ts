@@ -24,7 +24,8 @@ export function getSortedListingInstances(job: Job): ListingInstance[] {
 }
 
 export function getRepostSummary(job: Job): string | null {
-  const repostCount = job.repost_count || 0;
+  const inferredFromInstances = Math.max(getListingInstances(job).length - 1, 0);
+  const repostCount = Math.max(job.repost_count || 0, inferredFromInstances);
 
   if (repostCount <= 0) return null;
 

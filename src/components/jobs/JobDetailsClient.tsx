@@ -17,7 +17,11 @@ import {
 } from "lucide-react";
 import MarkdownRenderer from "./MarkdownRenderer"; // Assuming this is in the same directory or adjust path
 import { Job } from "@/types"; // Assuming types are defined here
-import { formatSalary, getExternalJobUrl } from "@/lib/jobs/formatters";
+import {
+  formatSalary,
+  getExternalJobUrl,
+  sanitizeExternalUrl,
+} from "@/lib/jobs/formatters";
 import {
   getLatestListingInstance,
   getRepostSummary,
@@ -152,6 +156,7 @@ export default function JobDetailsClient({
   const repostSummary = getRepostSummary(job);
   const salaryDisplay = formatSalary(job);
   const listingHistory = getSortedListingInstances(job);
+  const recruiterProfileUrl = sanitizeExternalUrl(job.recruiter_profile_url);
 
   return (
     <div className="bg-white shadow-lg rounded-lg overflow-hidden">
@@ -215,15 +220,17 @@ export default function JobDetailsClient({
 
         {/* Action buttons */}
         <div className="flex flex-wrap gap-3 mt-6">
-          <Link
-            href={jobUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-          >
-            View Job Listing
-            <ExternalLink size={16} className="ml-2" />
-          </Link>
+          {jobUrl && (
+            <Link
+              href={jobUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              View Job Listing
+              <ExternalLink size={16} className="ml-2" />
+            </Link>
+          )}
 
           {job.customized_resumes?.resume_link && job.customized_resume_id && (
             <button
@@ -299,9 +306,9 @@ export default function JobDetailsClient({
           </span>
         </div>
         <div className="mt-4 space-y-4">
-          {job.recruiter_profile_url && (
+          {recruiterProfileUrl && (
             <a
-              href={job.recruiter_profile_url}
+              href={recruiterProfileUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm text-indigo-600 hover:text-indigo-800"
