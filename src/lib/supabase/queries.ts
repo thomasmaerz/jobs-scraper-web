@@ -50,13 +50,27 @@ export async function getKeywordInsights(): Promise<KeywordInsightsResult> {
   while (true) {
     const { from, to } = getNextKeywordInsightsRange(offset, batchSize);
 
-    const response = await supabase
-      .from("keyword_insights")
-      .select("keyword, category, count, last_updated", { count: "exact" })
-      .order("count", { ascending: false })
-      .order("keyword", { ascending: true })
-      .gte("count", 2)
-      .range(from, to);
+    let response;
+
+    if (totalCount === null) {
+      response = await supabase
+        .from("keyword_insights")
+        .select("keyword, category, count, last_updated", {
+          count: "exact",
+        })
+        .order("count", { ascending: false })
+        .order("keyword", { ascending: true })
+        .gte("count", 2)
+        .range(from, to);
+    } else {
+      response = await supabase
+        .from("keyword_insights")
+        .select("keyword, category, count, last_updated")
+        .order("count", { ascending: false })
+        .order("keyword", { ascending: true })
+        .gte("count", 2)
+        .range(from, to);
+    }
 
     const data = ((await handleResponse(response)) ?? []) as KeywordInsight[];
 

@@ -113,3 +113,29 @@ test("aggregation logic combines multiple batches into one full result set", () 
   assert.equal(result.keywords[0]?.keyword, "kw-1");
   assert.equal(result.keywords[1199]?.keyword, "kw-1200");
 });
+
+test("aggregation logic falls back to accumulated length when totalCount is null", () => {
+  const firstBatch = [
+    { keyword: "kw-a", category: "skill", count: 10, last_updated: "2026-06-11" },
+    { keyword: "kw-b", category: "skill", count: 9, last_updated: "2026-06-11" },
+  ];
+
+  const secondBatch = [
+    { keyword: "kw-c", category: "technology", count: 8, last_updated: "2026-06-11" },
+  ];
+
+  const result = aggregateKeywordInsightBatches({
+    batches: [firstBatch, secondBatch],
+    totalCount: null,
+    batchSize: 2,
+  });
+
+  assert.equal(result.totalCount, result.keywords.length);
+  assert.equal(result.totalCount, 3);
+  assert.deepEqual(result.requestedRanges, [
+    { from: 0, to: 1 },
+    { from: 2, to: 3 },
+  ]);
+  assert.equal(result.keywords[0]?.keyword, "kw-a");
+  assert.equal(result.keywords[2]?.keyword, "kw-c");
+});
