@@ -50,6 +50,12 @@ export interface Job {
   last_seen_at?: string | null;
   seen_count?: number | null;
   repost_count?: number | null;
+  search_query?: string | null;
+  archetype?: string | null;
+  filter_profile?: string | null;
+  is_filtered?: boolean;
+  filter_reason?: string | null;
+  is_entry_level_filtered?: boolean;
   listing_instances?: ListingInstance[] | null;
 }
 

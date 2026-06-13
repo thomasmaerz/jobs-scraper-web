@@ -6,6 +6,7 @@ import { getNextKeywordInsightsRange, shouldContinueKeywordInsightsFetch } from 
 type KeywordInsight = {
   keyword: string;
   category: string;
+  archetype?: string;
   count: number;
   last_updated?: string | null;
 };
@@ -88,6 +89,7 @@ test("aggregation logic combines multiple batches into one full result set", () 
   const firstBatch = Array.from({ length: 1000 }, (_, index) => ({
     keyword: `kw-${index + 1}`,
     category: "skill",
+    archetype: "software_tpm",
     count: 10,
     last_updated: "2026-06-11",
   }));
@@ -95,6 +97,7 @@ test("aggregation logic combines multiple batches into one full result set", () 
   const secondBatch = Array.from({ length: 200 }, (_, index) => ({
     keyword: `kw-${index + 1001}`,
     category: "technology",
+    archetype: "software_tpm",
     count: 9,
     last_updated: "2026-06-11",
   }));
@@ -116,12 +119,12 @@ test("aggregation logic combines multiple batches into one full result set", () 
 
 test("aggregation logic falls back to accumulated length when totalCount is null", () => {
   const firstBatch = [
-    { keyword: "kw-a", category: "skill", count: 10, last_updated: "2026-06-11" },
-    { keyword: "kw-b", category: "skill", count: 9, last_updated: "2026-06-11" },
+    { keyword: "kw-a", category: "skill", archetype: "software_tpm", count: 10, last_updated: "2026-06-11" },
+    { keyword: "kw-b", category: "skill", archetype: "software_tpm", count: 9, last_updated: "2026-06-11" },
   ];
 
   const secondBatch = [
-    { keyword: "kw-c", category: "technology", count: 8, last_updated: "2026-06-11" },
+    { keyword: "kw-c", category: "technology", archetype: "software_tpm", count: 8, last_updated: "2026-06-11" },
   ];
 
   const result = aggregateKeywordInsightBatches({
