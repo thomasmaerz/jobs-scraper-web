@@ -1,5 +1,6 @@
 import InsightsClient from "@/components/insights/InsightsClient";
 import { getKeywordInsights } from "@/lib/supabase/queries";
+import { normalizeInsightsArchetype } from "./normalizeArchetype";
 
 export default async function InsightsPage({
   searchParams,
@@ -8,13 +9,7 @@ export default async function InsightsPage({
 }) {
   try {
     const params = await searchParams;
-    const archetypeParam = params?.archetype;
-    const archetype =
-      typeof archetypeParam === "string"
-        ? archetypeParam
-        : Array.isArray(archetypeParam)
-          ? archetypeParam[0] ?? "software_tpm"
-          : "software_tpm";
+    const archetype = normalizeInsightsArchetype(params?.archetype);
 
     const { keywords, totalCount } = await getKeywordInsights({ archetype });
 
