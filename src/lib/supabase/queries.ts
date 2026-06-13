@@ -440,6 +440,7 @@ export async function getAppliedJobsCountByDate(
 }
 
 export async function getJobById(job_id: string): Promise<Job | null> {
+  // The jobs table now stores one canonical row per role; job_id remains the stable canonical row identifier.
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("jobs")

@@ -17,6 +17,16 @@ import {
 import MarkdownRenderer from "./MarkdownRenderer";
 import { Job } from "@/types";
 import { useRouter, useSearchParams } from "next/navigation"; // Added useSearchParams
+import {
+  formatSalary,
+  getExternalJobUrl,
+  sanitizeExternalUrl,
+} from "@/lib/jobs/formatters";
+import {
+  getRepostSummary,
+  getSortedListingInstances,
+  hasReposts,
+} from "@/lib/jobs/repost";
 
 interface TopMatchesListProps {
   jobs: Job[];
@@ -223,6 +233,18 @@ export default function TopMatchesList({
     </div>
   );
 
+  const selectedJobSalary = selectedJob ? formatSalary(selectedJob) : null;
+  const selectedJobRepostSummary = selectedJob
+    ? getRepostSummary(selectedJob)
+    : null;
+  const selectedJobListingHistory = selectedJob
+    ? getSortedListingInstances(selectedJob)
+    : [];
+  const selectedJobUrl = selectedJob ? getExternalJobUrl(selectedJob) : null;
+  const selectedRecruiterProfileUrl = selectedJob
+    ? sanitizeExternalUrl(selectedJob.recruiter_profile_url)
+    : null;
+
   return (
     <div className="flex flex-col md:flex-row gap-6 h-[calc(100vh-17.5rem)] bg-gray-50 rounded-lg overflow-hidden shadow-sm">
       {/* Left Column: Job List */}
@@ -268,6 +290,11 @@ export default function TopMatchesList({
                             : "LinkedIn"}
                         </span>
                       </div>
+                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
+                        {job.posted_relative_text && <span>{job.posted_relative_text}</span>}
+                        {job.applicant_count != null && <span>{job.applicant_count} applicants</span>}
+                        {formatSalary(job) && <span>{formatSalary(job)}</span>}
+                      </div>
                     </div>
 
                     {job.resume_score && (
@@ -299,6 +326,11 @@ export default function TopMatchesList({
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
                         <ThumbsDown className="h-3 w-3 mr-1" />
                         Not Interested
+                      </span>
+                    )}
+                    {hasReposts(job) && (
+                      <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                        {getRepostSummary(job) || "Reposted role"}
                       </span>
                     )}
                   </div>
@@ -348,6 +380,23 @@ export default function TopMatchesList({
                       </span>
                     </div>
                   </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-sm text-gray-600">
+                    {selectedJob.posted_relative_text && (
+                      <span>Listed {selectedJob.posted_relative_text}</span>
+                    )}
+                    {selectedJob.applicant_count != null && (
+                      <span>{selectedJob.applicant_count} applicants</span>
+                    )}
+                    {selectedJobSalary && <span>{selectedJobSalary}</span>}
+                    {selectedJob.recruiter_name && (
+                      <span>Recruiter: {selectedJob.recruiter_name}</span>
+                    )}
+                    {selectedJobRepostSummary && (
+                      <span className="text-amber-700 font-medium">
+                        {selectedJobRepostSummary}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {selectedJob.resume_score && (
@@ -375,28 +424,17 @@ export default function TopMatchesList({
 
               {/* Action buttons */}
               <div className="flex flex-wrap gap-3 mt-5">
-                {(() => {
-                  // Determine the job listing URL based on the provider
-                  let jobUrl;
-                  if (selectedJob.provider === "careers_future") {
-                    jobUrl = `https://www.mycareersfuture.gov.sg/job/${selectedJob.job_id}`;
-                  } else {
-                    // Default to LinkedIn for "linkedin" provider or any other/undefined provider
-                    jobUrl = `https://www.linkedin.com/jobs/view/${selectedJob.job_id}`;
-                  }
-
-                  return (
-                    <Link
-                      href={jobUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                    >
-                      View Job Listing
-                      <ExternalLink size={16} className="ml-2" />
-                    </Link>
-                  );
-                })()}
+                {selectedJobUrl && (
+                  <Link
+                    href={selectedJobUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    View Job Listing
+                    <ExternalLink size={16} className="ml-2" />
+                  </Link>
+                )}
 
                 {selectedJob.resume_link && (
                   <button
@@ -476,11 +514,56 @@ export default function TopMatchesList({
                     Not Interested
                   </button>
                 </div>
-                  <span className="ml-auto text-xs text-gray-400 self-center">
-                    Scraped {new Date(selectedJob.scraped_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
+                {hasReposts(selectedJob) && (
+                  <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 self-center">
+                    {selectedJobRepostSummary || "Reposted role"}
                   </span>
+                )}
+                <span className="ml-auto text-xs text-gray-400 self-center">
+                  Scraped {new Date(selectedJob.scraped_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
+                </span>
               </div>
             </div>
+
+            {(selectedRecruiterProfileUrl || hasReposts(selectedJob)) && (
+              <div className="px-6 pt-4 space-y-4">
+                {selectedRecruiterProfileUrl && (
+                  <a
+                    href={selectedRecruiterProfileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-indigo-600 hover:text-indigo-800"
+                  >
+                    View recruiter profile
+                  </a>
+                )}
+                {hasReposts(selectedJob) && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                    <h3 className="font-medium text-amber-900">Listing history</h3>
+                    <p className="mt-1 text-sm text-amber-800">
+                      This role has appeared multiple times on LinkedIn.
+                    </p>
+                    <ul className="mt-3 space-y-2 text-sm text-amber-900">
+                      {selectedJobListingHistory.map((instance) => (
+                        <li key={`${instance.job_id}-${instance.scraped_at}`}>
+                          <span className="font-medium">
+                            {instance.posted_relative_text ||
+                              instance.posted_at ||
+                              "Seen"}
+                          </span>
+                          {instance.applicant_count != null
+                            ? ` • ${instance.applicant_count} applicants`
+                            : ""}
+                          {instance.recruiter_name
+                            ? ` • ${instance.recruiter_name}`
+                            : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Scrollable content for description */}
             <div className="p-6 flex-grow">

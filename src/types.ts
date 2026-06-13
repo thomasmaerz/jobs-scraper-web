@@ -1,4 +1,16 @@
 // Define basic types (you can refine these later based on your actual table structure)
+export interface ListingInstance {
+  job_id: string;
+  scraped_at: string;
+  posted_at: string | null;
+  posted_relative_text: string | null;
+  applicant_count: number | null;
+  salary_text: string | null;
+  recruiter_name: string | null;
+  recruiter_profile_url: string | null;
+  recruiter_identifier: string | null;
+}
+
 export interface Job {
   job_id: string;
   company: string;
@@ -20,6 +32,25 @@ export interface Job {
   customized_resumes?: Resume | null;
   resume_link?: string | null;
   provider: string;
+  posted_at?: string | null;
+  last_seen_posted_at?: string | null;
+  posted_relative_text?: string | null;
+  applicant_count?: number | null;
+  salary_text?: string | null;
+  salary_min?: number | null;
+  salary_max?: number | null;
+  salary_currency?: string | null;
+  recruiter_name?: string | null;
+  recruiter_profile_url?: string | null;
+  recruiter_identifier?: string | null;
+  original_job_id?: string | null;
+  latest_job_id?: string | null;
+  canonical_key?: string | null;
+  first_seen_at?: string | null;
+  last_seen_at?: string | null;
+  seen_count?: number | null;
+  repost_count?: number | null;
+  listing_instances?: ListingInstance[] | null;
 }
 
 // --- Resume Related Interfaces ---
