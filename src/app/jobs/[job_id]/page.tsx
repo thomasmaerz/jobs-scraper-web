@@ -19,6 +19,7 @@ export default async function JobDetailPage({ params }: PageProps) {
   }
 
   try {
+    // job_id here is the canonical row key, not necessarily the latest LinkedIn listing id.
     const jobDetails: Job | null = await getJobById(job_id);
 
     if (!jobDetails) {

@@ -17,6 +17,13 @@ import {
 } from "lucide-react";
 import MarkdownRenderer from "./MarkdownRenderer"; // Assuming this is in the same directory or adjust path
 import { Job } from "@/types"; // Assuming types are defined here
+import { formatSalary, getExternalJobUrl } from "@/lib/jobs/formatters";
+import {
+  getLatestListingInstance,
+  getRepostSummary,
+  getSortedListingInstances,
+  hasReposts,
+} from "@/lib/jobs/repost";
 
 interface JobDetailsClientProps {
   initialJob: Job;
@@ -140,13 +147,11 @@ export default function JobDetailsClient({
     }
   };
 
-  // Determine the job listing URL based on the provider
-  let jobUrl;
-  if (job.provider === "careers_future") {
-    jobUrl = `https://www.mycareersfuture.gov.sg/job/${job.job_id}`;
-  } else {
-    jobUrl = `https://www.linkedin.com/jobs/view/${job.job_id}`;
-  }
+  const jobUrl = getExternalJobUrl(job);
+  const latestListing = getLatestListingInstance(job);
+  const repostSummary = getRepostSummary(job);
+  const salaryDisplay = formatSalary(job);
+  const listingHistory = getSortedListingInstances(job);
 
   return (
     <div className="bg-white shadow-lg rounded-lg overflow-hidden">
@@ -174,6 +179,15 @@ export default function JobDetailsClient({
                     : "LinkedIn"}
                 </span>
               </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-sm text-gray-600">
+              {job.posted_relative_text && <span>Listed {job.posted_relative_text}</span>}
+              {job.applicant_count != null && <span>{job.applicant_count} applicants</span>}
+              {salaryDisplay && <span>{salaryDisplay}</span>}
+              {job.recruiter_name && <span>Recruiter: {job.recruiter_name}</span>}
+              {repostSummary && (
+                <span className="text-amber-700 font-medium">{repostSummary}</span>
+              )}
             </div>
           </div>
 
@@ -272,14 +286,53 @@ export default function JobDetailsClient({
                 className="mr-2"
                 fill={job.is_interested === false ? "currentColor" : "none"}
               />
-                    Not Interested
-                  </button>
-                </div>
-                  <span className="ml-auto text-xs text-gray-400 self-center">
-                    Scraped {new Date(job.scraped_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
-                  </span>
-              </div>
+              Not Interested
+            </button>
+          </div>
+          {hasReposts(job) && (
+            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 self-center">
+              {repostSummary || "Reposted role"}
+            </span>
+          )}
+          <span className="ml-auto text-xs text-gray-400 self-center">
+            Scraped {new Date(job.scraped_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
+          </span>
+        </div>
+        <div className="mt-4 space-y-4">
+          {job.recruiter_profile_url && (
+            <a
+              href={job.recruiter_profile_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-indigo-600 hover:text-indigo-800"
+            >
+              View recruiter profile
+            </a>
+          )}
+          {hasReposts(job) && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <h3 className="font-medium text-amber-900">Listing history</h3>
+              <p className="mt-1 text-sm text-amber-800">
+                This role has appeared multiple times on LinkedIn.
+              </p>
+              <ul className="mt-3 space-y-2 text-sm text-amber-900">
+                {listingHistory.map((instance) => (
+                  <li key={`${instance.job_id}-${instance.scraped_at}`}>
+                    <span className="font-medium">
+                      {instance.posted_relative_text || instance.posted_at || "Seen"}
+                    </span>
+                    {instance.applicant_count != null
+                      ? ` • ${instance.applicant_count} applicants`
+                      : ""}
+                    {instance.recruiter_name ? ` • ${instance.recruiter_name}` : ""}
+                    {latestListing?.job_id === instance.job_id ? " • Latest listing" : ""}
+                  </li>
+                ))}
+              </ul>
             </div>
+          )}
+        </div>
+      </div>
 
       {/* Scrollable content for description */}
       <div className="p-6">

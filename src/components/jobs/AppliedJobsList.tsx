@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { Job } from "@/types";
 import { useRouter } from "next/navigation";
+import { getExternalJobUrl } from "@/lib/jobs/formatters";
+import { getRepostSummary, hasReposts } from "@/lib/jobs/repost";
 
 // Status options for applied jobs
 const JOB_STATUS_OPTIONS = [
@@ -196,6 +198,11 @@ export default function AppliedJobsList({
                       <StatusIcon className="h-4 w-4 mr-1.5" />
                       {statusInfo.label}
                     </div>
+                    {hasReposts(job) && (
+                      <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                        {getRepostSummary(job) || "Reposted role"}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -211,11 +218,7 @@ export default function AppliedJobsList({
                       View Details
                     </Link>
                     <Link
-                      href={
-                        job.provider === "careers_future"
-                          ? `https://www.mycareersfuture.gov.sg/job/${job.job_id}`
-                          : `https://www.linkedin.com/jobs/view/${job.job_id}`
-                      }
+                      href={getExternalJobUrl(job)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center px-3 py-1.5 bg-white border border-gray-300 text-gray-700 text-sm rounded-md hover:bg-gray-50 transition-colors"
