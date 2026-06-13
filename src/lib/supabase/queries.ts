@@ -1,14 +1,14 @@
-import { Job, Resume } from "@/types";
-import { createSupabaseServerClient } from "@/utils/supabase/server";
-import { PostgrestError } from "@supabase/supabase-js";
+import type { Job, Resume } from "../../types.ts";
+import type { PostgrestError } from "@supabase/supabase-js";
 import {
   getNextKeywordInsightsRange,
   shouldContinueKeywordInsightsFetch,
-} from "./keywordInsightsPagination";
+} from "./keywordInsightsPagination.ts";
 
 export type KeywordInsight = {
   keyword: string;
   category: string;
+  archetype?: string;
   count: number;
   last_updated?: string | null;
 };
@@ -17,6 +17,32 @@ export type KeywordInsightsResult = {
   keywords: KeywordInsight[];
   totalCount: number;
 };
+
+type SupabaseClientFactory = () => Promise<any>;
+
+async function createDefaultSupabaseServerClient() {
+  const { createSupabaseServerClient } = await import(
+    "../../utils/supabase/server.ts"
+  );
+
+  return createSupabaseServerClient();
+}
+
+const createSupabaseServerClient: SupabaseClientFactory =
+  createDefaultSupabaseServerClient;
+
+let keywordInsightsClientFactory: SupabaseClientFactory =
+  createDefaultSupabaseServerClient;
+
+export function __setKeywordInsightsClientFactoryForTests(
+  factory: SupabaseClientFactory,
+) {
+  keywordInsightsClientFactory = factory;
+}
+
+export function __resetKeywordInsightsClientFactoryForTests() {
+  keywordInsightsClientFactory = createDefaultSupabaseServerClient;
+}
 
 // Helper function to handle Supabase response errors
 async function handleResponse({
@@ -38,8 +64,13 @@ async function handleResponse({
 
 // --- Query Functions ---
 
-export async function getKeywordInsights(): Promise<KeywordInsightsResult> {
-  const supabase = await createSupabaseServerClient();
+export async function getKeywordInsights(options: {
+  archetype?: string;
+  provider?: string;
+  minCount?: number;
+} = {}): Promise<KeywordInsightsResult> {
+  const supabase = await keywordInsightsClientFactory();
+  const { archetype = "software_tpm", provider, minCount = 2 } = options;
 
   // "All" must truly mean all matching keywords; fetch in batches to avoid silent truncation.
   const batchSize = 1000;
@@ -50,27 +81,31 @@ export async function getKeywordInsights(): Promise<KeywordInsightsResult> {
   while (true) {
     const { from, to } = getNextKeywordInsightsRange(offset, batchSize);
 
-    let response;
+    let query;
 
     if (totalCount === null) {
-      response = await supabase
+      query = supabase
         .from("keyword_insights")
-        .select("keyword, category, count, last_updated", {
+        .select("keyword, category, archetype, count, last_updated", {
           count: "exact",
         })
         .order("count", { ascending: false })
         .order("keyword", { ascending: true })
-        .gte("count", 2)
-        .range(from, to);
+        .eq("archetype", archetype)
+        .gte("count", minCount);
     } else {
-      response = await supabase
+      query = supabase
         .from("keyword_insights")
-        .select("keyword, category, count, last_updated")
+        .select("keyword, category, archetype, count, last_updated")
         .order("count", { ascending: false })
         .order("keyword", { ascending: true })
-        .gte("count", 2)
-        .range(from, to);
+        .eq("archetype", archetype)
+        .gte("count", minCount);
     }
+
+    query = provider ? query.eq("provider", provider) : query;
+
+    const response = await query.range(from, to);
 
     const data = ((await handleResponse(response)) ?? []) as KeywordInsight[];
 

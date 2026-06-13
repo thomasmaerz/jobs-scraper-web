@@ -25,6 +25,10 @@ const CATEGORY_LABELS: Record<Category, string> = {
   attribute: "Attributes",
 };
 
+const ARCHETYPE_LABELS: Record<string, string> = {
+  software_tpm: "Software TPM",
+};
+
 const CATEGORIES: Category[] = [
   "all",
   "skill",
@@ -125,17 +129,20 @@ function TopList({
 }
 
 type InsightsClientProps = {
+  archetype: string;
   keywords: KeywordInsight[];
   totalKeywords: number;
   lastUpdated: string | null;
 };
 
 export default function InsightsClient({
+  archetype,
   keywords,
   totalKeywords,
   lastUpdated,
 }: InsightsClientProps) {
   const [activeCategory, setActiveCategory] = useState<Category>("all");
+  const archetypeLabel = ARCHETYPE_LABELS[archetype] ?? archetype;
 
   const filtered = useMemo(
     () =>
@@ -161,9 +168,9 @@ export default function InsightsClient({
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">Job Market Insights</h1>
         <p className="mt-1 text-gray-500">
-          Most commonly requested skills, technologies, certifications and attributes
-          across <span className="font-medium text-gray-700">{totalKeywords} unique keywords</span>
-          .
+          {archetypeLabel} roles. Most commonly requested skills, technologies,
+          certifications and attributes across{" "}
+          <span className="font-medium text-gray-700">{totalKeywords} unique keywords</span>.
           {lastUpdated && (
             <span className="ml-2 text-xs text-gray-400">
               Last updated {new Date(lastUpdated).toLocaleDateString()}

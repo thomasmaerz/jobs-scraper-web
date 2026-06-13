@@ -1,9 +1,22 @@
 import InsightsClient from "@/components/insights/InsightsClient";
 import { getKeywordInsights } from "@/lib/supabase/queries";
 
-export default async function InsightsPage() {
+export default async function InsightsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   try {
-    const { keywords, totalCount } = await getKeywordInsights();
+    const params = await searchParams;
+    const archetypeParam = params?.archetype;
+    const archetype =
+      typeof archetypeParam === "string"
+        ? archetypeParam
+        : Array.isArray(archetypeParam)
+          ? archetypeParam[0] ?? "software_tpm"
+          : "software_tpm";
+
+    const { keywords, totalCount } = await getKeywordInsights({ archetype });
 
     if (!keywords.length) {
       return (
@@ -24,6 +37,7 @@ export default async function InsightsPage() {
 
     return (
       <InsightsClient
+        archetype={archetype}
         keywords={keywords}
         totalKeywords={totalCount}
         lastUpdated={keywords[0]?.last_updated ?? null}
