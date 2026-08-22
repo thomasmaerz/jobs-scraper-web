@@ -1,144 +1,66 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+import test from "node:test";
 
-import { getNextKeywordInsightsRange, shouldContinueKeywordInsightsFetch } from "./keywordInsightsPagination.ts";
+import {
+  __resetKeywordInsightsClientFactoryForTests,
+  __setKeywordInsightsClientFactoryForTests,
+  getKeywordInsights,
+} from "./queries.ts";
 
-type KeywordInsight = {
-  keyword: string;
-  category: string;
-  archetype?: string;
-  count: number;
-  last_updated?: string | null;
-};
-
-function aggregateKeywordInsightBatches(args: {
-  batches: KeywordInsight[][];
-  totalCount: number | null;
-  batchSize?: number;
-}) {
-  const batchSize = args.batchSize ?? 1000;
-  let offset = 0;
-  let totalCount = args.totalCount;
-  const keywords: KeywordInsight[] = [];
-  const requestedRanges: Array<{ from: number; to: number }> = [];
-
-  for (const batch of args.batches) {
-    const range = getNextKeywordInsightsRange(offset, batchSize);
-    requestedRanges.push(range);
-    keywords.push(...batch);
-
-    if (
-      !shouldContinueKeywordInsightsFetch({
-        accumulatedCount: keywords.length,
-        batchCount: batch.length,
-        batchSize,
-        totalCount,
-      })
-    ) {
-      break;
-    }
-
-    offset += batchSize;
-  }
-
-  return {
-    keywords,
-    totalCount: totalCount ?? keywords.length,
-    requestedRanges,
-  };
-}
-
-test("pagination helpers produce expected first and second ranges", () => {
-  assert.deepEqual(getNextKeywordInsightsRange(0, 1000), { from: 0, to: 999 });
-  assert.deepEqual(getNextKeywordInsightsRange(1000, 1000), { from: 1000, to: 1999 });
+test.afterEach(() => {
+  __resetKeywordInsightsClientFactoryForTests();
 });
 
-test("shouldContinueKeywordInsightsFetch stops on empty, partial, and exact-total batches", () => {
-  assert.equal(
-    shouldContinueKeywordInsightsFetch({
-      accumulatedCount: 1000,
-      batchCount: 0,
-      batchSize: 1000,
-      totalCount: 1500,
-    }),
-    false,
-  );
-
-  assert.equal(
-    shouldContinueKeywordInsightsFetch({
-      accumulatedCount: 1500,
-      batchCount: 500,
-      batchSize: 1000,
-      totalCount: 3000,
-    }),
-    false,
-  );
-
-  assert.equal(
-    shouldContinueKeywordInsightsFetch({
-      accumulatedCount: 2200,
-      batchCount: 1000,
-      batchSize: 1000,
-      totalCount: 2200,
-    }),
-    false,
-  );
-});
-
-test("aggregation logic combines multiple batches into one full result set", () => {
+test("getKeywordInsights batches at 1000 rows until the RPC total is reached", async () => {
+  const offsets: number[] = [];
   const firstBatch = Array.from({ length: 1000 }, (_, index) => ({
     keyword: `kw-${index + 1}`,
     category: "skill",
-    archetype: "software_tpm",
     count: 10,
+    total_count: 1200,
     last_updated: "2026-06-11",
   }));
-
   const secondBatch = Array.from({ length: 200 }, (_, index) => ({
     keyword: `kw-${index + 1001}`,
     category: "technology",
-    archetype: "software_tpm",
     count: 9,
+    total_count: 1200,
     last_updated: "2026-06-11",
   }));
 
-  const result = aggregateKeywordInsightBatches({
-    batches: [firstBatch, secondBatch],
-    totalCount: 1200,
-  });
+  __setKeywordInsightsClientFactoryForTests(async () => ({
+    async rpc(name: string, params: { p_limit: number; p_offset: number }) {
+      assert.equal(name, "get_filtered_keyword_insights");
+      assert.equal(params.p_limit, 1000);
+      offsets.push(params.p_offset);
+      return {
+        data: params.p_offset === 0 ? firstBatch : secondBatch,
+        error: null,
+      };
+    },
+  }));
 
-  assert.equal(result.keywords.length, 1200);
+  const result = await getKeywordInsights();
+
+  assert.deepEqual(offsets, [0, 1000]);
   assert.equal(result.totalCount, 1200);
-  assert.deepEqual(result.requestedRanges, [
-    { from: 0, to: 999 },
-    { from: 1000, to: 1999 },
-  ]);
+  assert.equal(result.keywords.length, 1200);
   assert.equal(result.keywords[0]?.keyword, "kw-1");
   assert.equal(result.keywords[1199]?.keyword, "kw-1200");
+  assert.equal("total_count" in result.keywords[0]!, false);
 });
 
-test("aggregation logic falls back to accumulated length when totalCount is null", () => {
-  const firstBatch = [
-    { keyword: "kw-a", category: "skill", archetype: "software_tpm", count: 10, last_updated: "2026-06-11" },
-    { keyword: "kw-b", category: "skill", archetype: "software_tpm", count: 9, last_updated: "2026-06-11" },
-  ];
+test("getKeywordInsights returns an empty aggregate result without requesting another batch", async () => {
+  let calls = 0;
+  __setKeywordInsightsClientFactoryForTests(async () => ({
+    async rpc() {
+      calls += 1;
+      return { data: [], error: null };
+    },
+  }));
 
-  const secondBatch = [
-    { keyword: "kw-c", category: "technology", archetype: "software_tpm", count: 8, last_updated: "2026-06-11" },
-  ];
+  const result = await getKeywordInsights({ archetypes: [], minCount: -10 });
 
-  const result = aggregateKeywordInsightBatches({
-    batches: [firstBatch, secondBatch],
-    totalCount: null,
-    batchSize: 2,
-  });
-
-  assert.equal(result.totalCount, result.keywords.length);
-  assert.equal(result.totalCount, 3);
-  assert.deepEqual(result.requestedRanges, [
-    { from: 0, to: 1 },
-    { from: 2, to: 3 },
-  ]);
-  assert.equal(result.keywords[0]?.keyword, "kw-a");
-  assert.equal(result.keywords[2]?.keyword, "kw-c");
+  assert.deepEqual(result, { keywords: [], totalCount: 0 });
+  assert.equal(calls, 1);
 });

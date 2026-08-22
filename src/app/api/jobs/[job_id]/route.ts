@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { updateJobById } from "@/lib/supabase/queries"; // Adjust path as needed
-import { Job } from "@/types";
+
+const ALLOWED_UPDATE_KEYS = new Set([
+  "application_date",
+  "is_interested",
+  "notes",
+  "status",
+]);
 
 // Handler for PATCH requests to update a job
 export async function PATCH(
@@ -16,13 +22,21 @@ export async function PATCH(
       );
     }
 
-    const updates = (await request.json()) as Partial<Omit<Job, "job_id">>;
-    if (!updates || Object.keys(updates).length === 0) {
+    const payload: unknown = await request.json();
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return NextResponse.json({ error: "Invalid update payload" }, { status: 400 });
+    }
+    const entries = Object.entries(payload);
+    if (
+      entries.length === 0 ||
+      entries.some(([key]) => !ALLOWED_UPDATE_KEYS.has(key))
+    ) {
       return NextResponse.json(
-        { error: "Update payload is required" },
+        { error: "Only status, application_date, is_interested, and notes may be updated" },
         { status: 400 }
       );
     }
+    const updates = Object.fromEntries(entries);
 
     const updatedJob = await updateJobById(job_id, updates);
 

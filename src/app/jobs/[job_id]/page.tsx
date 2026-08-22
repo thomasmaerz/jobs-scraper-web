@@ -1,5 +1,4 @@
-import { getJobById } from "@/lib/supabase/queries";
-import { Job } from "@/types";
+import { getJobById, getJobKeywordInsights } from "@/lib/supabase/queries";
 import { notFound } from "next/navigation";
 import JobDetailsClient from "@/components/jobs/JobDetailsClient"; // Import the new client component
 import { AlertTriangle } from "lucide-react";
@@ -20,7 +19,10 @@ export default async function JobDetailPage({ params }: PageProps) {
 
   try {
     // job_id here is the canonical row key, not necessarily the latest LinkedIn listing id.
-    const jobDetails: Job | null = await getJobById(job_id);
+    const [jobDetails, keywordInsights] = await Promise.all([
+      getJobById(job_id),
+      getJobKeywordInsights(job_id),
+    ]);
 
     if (!jobDetails) {
       return (
@@ -45,8 +47,11 @@ export default async function JobDetailPage({ params }: PageProps) {
     }
 
     return (
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <JobDetailsClient initialJob={jobDetails} />
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <JobDetailsClient
+          initialJob={jobDetails}
+          keywordInsights={keywordInsights}
+        />
       </div>
     );
   } catch (error) {

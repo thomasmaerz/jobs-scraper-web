@@ -74,7 +74,7 @@ Once the backend is successfully set up and running, you can proceed with settin
     ```env
     NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
     NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-    NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+    SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
     ```
 
 ### Running the Development Server

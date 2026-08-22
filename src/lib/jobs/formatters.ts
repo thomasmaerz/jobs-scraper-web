@@ -56,3 +56,48 @@ export function formatSalary(job: Job): string | null {
 
   return null;
 }
+
+export function formatLevel(level: string | null | undefined): string {
+  if (!level) return "";
+
+  const normalized = level.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const labels: Record<string, string> = {
+    not_applicable: "Not Applicable",
+    not_applicable_level: "Not Applicable",
+    n_a: "Not Applicable",
+    na: "Not Applicable",
+    entry: "Entry",
+    entry_level: "Entry",
+    associate: "Associate",
+    associate_level: "Associate",
+    mid_senior: "Mid-Senior",
+    mid_senior_level: "Mid-Senior",
+    midsenior: "Mid-Senior",
+    senior: "Senior",
+    senior_level: "Senior",
+    director: "Director",
+    director_level: "Director",
+    executive: "Executive",
+    executive_level: "Executive",
+    internship: "Internship",
+    internship_level: "Internship",
+    intern: "Internship",
+  };
+
+  return labels[normalized] ?? level;
+}
+
+export function formatSeenCount(count: number | null | undefined): string {
+  return count != null && count > 0 ? `Seen ${count}x` : "";
+}
+
+export function formatFilterReason(
+  reason: string | null | undefined,
+): string {
+  return reason ? `filtered: ${reason}` : "";
+}
+
+export function formatRepostCount(count: number | null | undefined): string {
+  if (count == null || count <= 0) return "";
+  return count === 1 ? "Reposted 1 time" : `Reposted ${count} times`;
+}

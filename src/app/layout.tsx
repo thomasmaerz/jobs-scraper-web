@@ -26,11 +26,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased flex flex-col h-screen bg-gray-50 overflow-hidden`} // Added h-screen and overflow-hidden
+        className={`${geistSans.variable} ${geistMono.variable} flex min-h-screen flex-col bg-gray-50 antialiased`}
       >
         <Navbar /> {/* Fixed at top */}
-        {/* Main content area with overflow scrolling */}
-        <main className="flex-grow container mx-auto p-4 overflow-auto">
+        <main className="container mx-auto flex-grow p-4">
           {children}
         </main>
         {/* Footer fixed at bottom */}

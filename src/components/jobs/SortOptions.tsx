@@ -1,97 +1,80 @@
 "use client";
 
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback } from "react";
-import { ArrowUp, ArrowDown } from "lucide-react";
+
+import {
+  SORT_OPTIONS,
+  type SortField,
+  type SortOrder,
+} from "@/lib/filters/types";
+import { resetResultPosition } from "@/lib/filters/searchParams";
+
 interface SortOptionsProps {
+  supportedSorts?: readonly SortField[];
   showApplicationSort?: boolean;
   showResumeScoreSort?: boolean;
 }
 
-const SORT_FIELDS = {
-  APPLICATION_DATE: "application_date",
-  RESUME_SCORE: "resume_score",
-};
-
 export default function SortOptions({
+  supportedSorts,
   showApplicationSort = true,
   showResumeScoreSort = true,
 }: SortOptionsProps) {
-  const router = useRouter();
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const available =
+    supportedSorts ??
+    SORT_OPTIONS.filter((option) => {
+      if (option.field === "application_date") return showApplicationSort;
+      if (option.field === "resume_score") return showResumeScoreSort;
+      return false;
+    }).map((option) => option.field);
+  const currentField = available.includes(searchParams.get("sortBy") as SortField)
+    ? (searchParams.get("sortBy") as SortField)
+    : undefined;
+  const currentOrder: SortOrder =
+    searchParams.get("sortOrder") === "asc" ? "asc" : "desc";
 
-  const currentSortBy = searchParams.get("sortBy");
-  const currentSortOrder = searchParams.get("sortOrder");
-
-  const createQueryString = useCallback(
-    (paramsToUpdate: Record<string, string>) => {
-      const params = new URLSearchParams(searchParams.toString());
-      Object.entries(paramsToUpdate).forEach(([name, value]) => {
-        if (value) {
-          params.set(name, value);
-        } else {
-          params.delete(name);
-        }
-      });
-      return params.toString();
-    },
-    [searchParams]
-  );
-
-  const handleSort = (field: string) => {
-    let newSortOrder = "desc"; // Default to descending
-    if (currentSortBy === field) {
-      newSortOrder = currentSortOrder === "asc" ? "desc" : "asc";
-    }
-    router.push(
-      pathname +
-        "?" +
-        createQueryString({ sortBy: field, sortOrder: newSortOrder }),
-      { scroll: false }
-    );
-  };
-
-  const renderSortIcon = (field: string) => {
-    if (currentSortBy === field) {
-      return currentSortOrder === "asc" ? (
-        <ArrowUp className="ml-1" />
-      ) : (
-        <ArrowDown className="ml-1" />
-      );
-    }
-    return null;
+  const sort = (field: SortField) => {
+    const next = new URLSearchParams(searchParams.toString());
+    const order: SortOrder =
+      currentField === field && currentOrder === "desc" ? "asc" : "desc";
+    next.set("sortBy", field);
+    next.set("sortOrder", order);
+    resetResultPosition(next);
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
   };
 
   return (
-    <div className="flex items-center space-x-3">
-      {showApplicationSort && (
-        <button
-          onClick={() => handleSort(SORT_FIELDS.APPLICATION_DATE)}
-          className={`flex items-center px-3 py-1.5 text-sm font-medium rounded-md transition-colors
-            ${
-              currentSortBy === SORT_FIELDS.APPLICATION_DATE
-                ? "bg-gray-200 text-gray-800"
-                : "text-gray-600 hover:bg-gray-100"
-            }`}
-        >
-          Sort by Date
-          {renderSortIcon(SORT_FIELDS.APPLICATION_DATE)}
-        </button>
-      )}
-      {showResumeScoreSort && (
-        <button
-          onClick={() => handleSort(SORT_FIELDS.RESUME_SCORE)}
-          className={`flex items-center px-3 py-1.5 text-sm font-medium rounded-md transition-colors
-            ${
-              currentSortBy === SORT_FIELDS.RESUME_SCORE
-                ? "bg-gray-200 text-gray-800"
-                : "text-gray-600 hover:bg-gray-100"
-            }`}
-        >
-          Sort by Score
-          {renderSortIcon(SORT_FIELDS.RESUME_SCORE)}
-        </button>
+    <div className="flex flex-wrap items-center gap-2" aria-label="Sort jobs">
+      {SORT_OPTIONS.filter((option) => available.includes(option.field)).map(
+        (option) => {
+          const active = currentField === option.field;
+          return (
+            <button
+              key={option.field}
+              type="button"
+              onClick={() => sort(option.field)}
+              aria-pressed={active}
+              aria-label={`${option.label}, ${active ? currentOrder : "not selected"}`}
+              className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/30 ${
+                active
+                  ? "bg-gray-200 text-gray-900"
+                  : "text-gray-600 hover:bg-gray-100"
+              }`}
+            >
+              {option.label}
+              {active &&
+                (currentOrder === "asc" ? (
+                  <ArrowUp className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <ArrowDown className="h-4 w-4" aria-hidden="true" />
+                ))}
+            </button>
+          );
+        }
       )}
     </div>
   );

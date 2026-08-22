@@ -1,14 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { KeywordInsight } from "@/lib/supabase/queries";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-type Category =
-  | "all"
-  | "skill"
-  | "technology"
-  | "certification"
-  | "attribute";
+import { resetResultPosition } from "@/lib/filters/searchParams";
+import {
+  INSIGHTS_CATEGORY_VALUES,
+  type InsightsCategory,
+} from "@/lib/filters/types";
+import type { KeywordInsight } from "@/types";
 
 const CATEGORY_COLORS: Record<string, string> = {
   skill: "#1976D2",
@@ -17,25 +16,13 @@ const CATEGORY_COLORS: Record<string, string> = {
   attribute: "#7B1FA2",
 };
 
-const CATEGORY_LABELS: Record<Category, string> = {
+const CATEGORY_LABELS: Record<InsightsCategory, string> = {
   all: "All",
   skill: "Skills",
   technology: "Technologies",
   certification: "Certifications",
   attribute: "Attributes",
 };
-
-const ARCHETYPE_LABELS: Record<string, string> = {
-  software_tpm: "Software TPM",
-};
-
-const CATEGORIES: Category[] = [
-  "all",
-  "skill",
-  "technology",
-  "certification",
-  "attribute",
-];
 
 function WordCloud({ keywords }: { keywords: KeywordInsight[] }) {
   if (!keywords.length) {
@@ -63,9 +50,9 @@ function WordCloud({ keywords }: { keywords: KeywordInsight[] }) {
 
   return (
     <div className="flex flex-wrap justify-center gap-3 p-6">
-      {keywords.map((k) => (
+      {keywords.map((k, index) => (
         <span
-          key={`${k.keyword}-${k.category}`}
+          key={`${k.category}:${k.keyword}:${index}`}
           title={`${k.keyword} — ${k.count} job${k.count !== 1 ? "s" : ""}`}
           style={{
             fontSize: `${fontSize(k.count)}px`,
@@ -110,7 +97,7 @@ function TopList({
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {sorted.map((k, i) => (
         <div
-          key={`${k.keyword}-${k.category}`}
+          key={`${k.category}:${k.keyword}:${i}`}
           className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-2 shadow-sm"
         >
           <div className="flex min-w-0 items-center gap-2">
@@ -129,47 +116,37 @@ function TopList({
 }
 
 type InsightsClientProps = {
-  archetype: string;
+  scopeLabel: string;
   keywords: KeywordInsight[];
   totalKeywords: number;
   lastUpdated: string | null;
+  activeCategory: InsightsCategory;
 };
 
 export default function InsightsClient({
-  archetype,
+  scopeLabel,
   keywords,
   totalKeywords,
   lastUpdated,
+  activeCategory,
 }: InsightsClientProps) {
-  const [activeCategory, setActiveCategory] = useState<Category>("all");
-  const archetypeLabel = ARCHETYPE_LABELS[archetype] ?? archetype;
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const filtered = useMemo(
-    () =>
-      activeCategory === "all"
-        ? keywords
-        : keywords.filter((keyword) => keyword.category === activeCategory),
-    [activeCategory, keywords],
-  );
-
-  const counts: Record<Category, number> = useMemo(
-    () => ({
-      all: keywords.length,
-      skill: keywords.filter((keyword) => keyword.category === "skill").length,
-      technology: keywords.filter((keyword) => keyword.category === "technology").length,
-      certification: keywords.filter((keyword) => keyword.category === "certification").length,
-      attribute: keywords.filter((keyword) => keyword.category === "attribute").length,
-    }),
-    [keywords],
-  );
+  const selectCategory = (category: InsightsCategory) => {
+    const next = new URLSearchParams(searchParams.toString());
+    next.set("category", category);
+    resetResultPosition(next);
+    const query = next.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Job Market Insights</h1>
-        <p className="mt-1 text-gray-500">
-          {archetypeLabel} roles. Most commonly requested skills, technologies,
-          certifications and attributes across{" "}
+    <div>
+      <div className="mb-6">
+        <p className="text-sm text-gray-500">
+          {scopeLabel} roles. Showing{" "}
           <span className="font-medium text-gray-700">{totalKeywords} unique keywords</span>.
           {lastUpdated && (
             <span className="ml-2 text-xs text-gray-400">
@@ -180,10 +157,12 @@ export default function InsightsClient({
       </div>
 
       <div className="mb-6 flex flex-wrap gap-2">
-        {CATEGORIES.map((category) => (
+        {INSIGHTS_CATEGORY_VALUES.map((category) => (
           <button
             key={category}
-            onClick={() => setActiveCategory(category)}
+            type="button"
+            onClick={() => selectCategory(category)}
+            aria-pressed={activeCategory === category}
             className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${
               activeCategory === category
                 ? "border-blue-600 bg-blue-600 text-white"
@@ -191,30 +170,29 @@ export default function InsightsClient({
             }`}
           >
             {CATEGORY_LABELS[category]}
-            <span
-              className={`ml-1.5 text-xs ${
-                activeCategory === category ? "text-blue-100" : "text-gray-400"
-              }`}
-            >
-              {counts[category]}
-            </span>
           </button>
         ))}
       </div>
 
-      <>
-        <div className="mb-8 min-h-64 rounded-xl border border-gray-200 bg-gray-50">
-          {activeCategory === "all" && <Legend />}
-          <WordCloud keywords={filtered} />
-        </div>
+      {keywords.length ? (
+        <>
+          <div className="mb-8 min-h-64 rounded-xl border border-gray-200 bg-gray-50">
+            {activeCategory === "all" && <Legend />}
+            <WordCloud keywords={keywords} />
+          </div>
 
-        <div className="mb-4">
-          <h2 className="mb-3 text-lg font-semibold text-gray-800">
-            Top {Math.min(20, filtered.length)} — {CATEGORY_LABELS[activeCategory]}
-          </h2>
-          <TopList keywords={filtered} limit={20} />
+          <div className="mb-4">
+            <h2 className="mb-3 text-lg font-semibold text-gray-800">
+              Top {Math.min(20, keywords.length)} — {CATEGORY_LABELS[activeCategory]}
+            </h2>
+            <TopList keywords={keywords} limit={20} />
+          </div>
+        </>
+      ) : (
+        <div className="flex h-64 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 px-6 text-center text-gray-400">
+          No insights match this category and filter selection.
         </div>
-      </>
+      )}
     </div>
   );
 }

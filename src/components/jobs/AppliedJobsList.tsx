@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import PaginationControls from "./PaginationControls";
 import {
@@ -19,7 +19,12 @@ import {
 } from "lucide-react";
 import { Job } from "@/types";
 import { useRouter } from "next/navigation";
-import { getExternalJobUrl } from "@/lib/jobs/formatters";
+import {
+  formatFilterReason,
+  formatLevel,
+  formatSeenCount,
+  getExternalJobUrl,
+} from "@/lib/jobs/formatters";
 import { getRepostSummary, hasReposts } from "@/lib/jobs/repost";
 
 // Status options for applied jobs
@@ -37,8 +42,8 @@ const JOB_STATUS_OPTIONS = [
     color: "bg-purple-100 text-purple-800 border-purple-300",
   },
   {
-    value: "offered",
-    label: "Offered",
+    value: "offer",
+    label: "Offer",
     icon: BadgeCheck,
     color: "bg-green-100 text-green-800 border-green-300",
   },
@@ -54,16 +59,40 @@ interface AppliedJobsListProps {
   jobs: Job[];
   currentPage: number;
   totalPages: number;
+  pageSize: 10 | 25 | 100 | "all";
+}
+
+function getLevelBadgeColor(level: string | null): string {
+  switch (formatLevel(level)) {
+    case "Entry":
+    case "Associate":
+    case "Internship":
+      return "bg-teal-100 text-teal-800";
+    case "Mid-Senior":
+    case "Senior":
+      return "bg-orange-100 text-orange-800";
+    case "Director":
+    case "Executive":
+      return "bg-violet-100 text-violet-800";
+    default:
+      return "bg-gray-100 text-gray-700";
+  }
 }
 
 export default function AppliedJobsList({
   jobs,
   currentPage,
   totalPages,
+  pageSize,
 }: AppliedJobsListProps) {
+  const [displayedJobs, setDisplayedJobs] = useState(jobs);
   const [updatingJobId, setUpdatingJobId] = useState<string | null>(null);
   const [isStatusMenuOpen, setIsStatusMenuOpen] = useState<string | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    setDisplayedJobs(jobs);
+  }, [jobs]);
 
   const handleViewResume = (
     job_id: string,
@@ -93,6 +122,15 @@ export default function AppliedJobsList({
           errorData?.error || `HTTP error! status: ${response.status}`;
         throw new Error(errorMessage);
       }
+
+      const updatedJob: Partial<Job> = await response.json();
+      setDisplayedJobs((currentJobs) =>
+        currentJobs.map((currentJob) =>
+          currentJob.job_id === job.job_id
+            ? { ...currentJob, ...updatedJob }
+            : currentJob,
+        ),
+      );
 
       // Refresh the page to show updated jobs
       router.refresh();
@@ -153,9 +191,9 @@ export default function AppliedJobsList({
 
   return (
     <div className="bg-gray-50 rounded-lg overflow-hidden shadow-sm">
-      {jobs.length > 0 ? (
+      {displayedJobs.length > 0 ? (
         <div className="divide-y divide-gray-100">
-          {jobs.map((job) => {
+          {displayedJobs.map((job) => {
             const statusInfo = getStatusInfo(job.status || "applied");
             const StatusIcon = statusInfo.icon;
             const externalJobUrl = getExternalJobUrl(job);
@@ -188,6 +226,30 @@ export default function AppliedJobsList({
                           Applied on {formatDate(job.application_date)}
                         </span>
                       </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        {job.level && (
+                          <span
+                            className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${getLevelBadgeColor(job.level)}`}
+                          >
+                          {formatLevel(job.level)}
+                        </span>
+                      )}
+                      {job.archetype && (
+                        <span className="inline-flex rounded bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700">
+                          {job.archetype}
+                        </span>
+                      )}
+                      {formatSeenCount(job.seen_count) && (
+                        <span className="text-xs text-gray-500">
+                          {formatSeenCount(job.seen_count)}
+                        </span>
+                      )}
+                      {job.is_filtered && job.filter_reason && (
+                        <span className="inline-flex rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                          {formatFilterReason(job.filter_reason)}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -317,14 +379,13 @@ export default function AppliedJobsList({
       )}
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="p-5 border-t border-gray-100 bg-white">
-          <PaginationControls
-            currentPage={currentPage}
-            totalPages={totalPages}
-          />
-        </div>
-      )}
+      <div className="p-5 border-t border-gray-100 bg-white">
+        <PaginationControls
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+        />
+      </div>
     </div>
   );
 }

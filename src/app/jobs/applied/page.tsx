@@ -1,66 +1,56 @@
 import { Suspense } from "react";
-import RefreshButton from "@/components/jobs/RefreshButton";
-import { Job } from "@/types";
-import { getAppliedJobs, getAppliedJobsCount } from "@/lib/supabase/queries";
-import AppliedJobsList from "@/components/jobs/AppliedJobsList";
-import JobListSkeleton from "@/components/jobs/JobListSkeleton";
-import SearchComponent from "@/components/jobs/SearchComponent";
-import FilterButton from "@/components/jobs/FilterButton";
-import SortOptions from "@/components/jobs/SortOptions"; // Import the new SortOptions component
 
-const PAGE_SIZE = 10; // Define page size
+import AppliedJobsList from "@/components/jobs/AppliedJobsList";
+import FilterButton from "@/components/jobs/FilterButton";
+import FilterChips from "@/components/jobs/FilterChips";
+import JobListSkeleton from "@/components/jobs/JobListSkeleton";
+import RefreshButton from "@/components/jobs/RefreshButton";
+import SearchComponent from "@/components/jobs/SearchComponent";
+import SortOptions from "@/components/jobs/SortOptions";
+import { parseFilterSearchParams } from "@/lib/filters/searchParams";
+import type { FilterId, SortField } from "@/lib/filters/types";
+import { getAppliedJobs, getAppliedJobsCount } from "@/lib/supabase/queries";
+
+const DEFAULT_PAGE_SIZE = 25;
+const SUPPORTED_FILTERS: readonly FilterId[] = [
+  "provider",
+  "applicationStatus",
+  "level",
+  "archetype",
+  "filterStatus",
+  "hasSalary",
+  "salaryRange",
+  "repostCount",
+  "seenCount",
+  "datePosted",
+  "location",
+];
+const SUPPORTED_SORTS: readonly SortField[] = [
+  "application_date",
+  "resume_score",
+  "posted_at",
+  "salary_min",
+  "repost_count",
+  "seen_count",
+];
 
 export default async function AppliedJobsPage({
   searchParams,
 }: {
   searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  const params = await searchParams;
-  // Get current page from search params, default to 1
-  const currentPage = parseInt(params?.page as string) || 1;
-
-  // Get search query from search params
-  const searchQuery = params?.query as string;
-
-  // Get provider filter from search params
-  const provider = params?.provider as string;
-  const providerFilter = provider && provider !== "all" ? provider : undefined;
-
-  // Get application status filter from search params
-  const applicationStatus = params?.applicationStatus as string;
-  const applicationStatusFilter =
-    applicationStatus && applicationStatus !== "all"
-      ? applicationStatus
-      : undefined;
-
-  // Get sort parameters from search params (New)
-  const sortBy = params?.sortBy as string; // e.g., 'application_date', 'resume_score'
-  const sortOrder = params?.sortOrder as string; // e.g., 'asc', 'desc'
-
-  // Fetch the jobs for the current page
-  const appliedJobs: Job[] = await getAppliedJobs(
-    currentPage,
-    PAGE_SIZE,
-    providerFilter,
-    searchQuery,
-    applicationStatusFilter,
-    sortBy, // New: Pass sortBy
-    sortOrder // New: Pass sortOrder
-  );
-
-  // Fetch total count
-  const totalCount = await getAppliedJobsCount(
-    providerFilter,
-    searchQuery,
-    applicationStatusFilter
-    // Note: Sort parameters are typically not needed for total count
-  );
-
-  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  const filters = parseFilterSearchParams((await searchParams) ?? {});
+  const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
+  const currentPage = pageSize === "all" ? 1 : filters.page ?? 1;
+  const options = { ...filters, page: currentPage, pageSize };
+  const [appliedJobs, totalCount] = await Promise.all([
+    getAppliedJobs(options),
+    getAppliedJobsCount(options),
+  ]);
+  const totalPages = pageSize === "all" ? 1 : Math.ceil(totalCount / pageSize);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-      {/* Page header with actions */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Applied Jobs</h1>
@@ -70,28 +60,28 @@ export default async function AppliedJobsPage({
         </div>
 
         <div className="flex items-center space-x-3">
-          <SearchComponent />
-          <FilterButton
-            interestOptions={false}
-            scoreOptions={false}
-            applicationStatusOptions={true}
-          />
-          <SortOptions /> {/* Add the SortOptions component here */}
+          <Suspense fallback={null}>
+            <SearchComponent />
+            <FilterButton supportedFilters={SUPPORTED_FILTERS} />
+            <SortOptions supportedSorts={SUPPORTED_SORTS} />
+          </Suspense>
           <RefreshButton currentPage={currentPage} />
         </div>
       </div>
 
-      {/* Main content with loading state */}
+      <Suspense fallback={null}>
+        <FilterChips supportedFilters={SUPPORTED_FILTERS} />
+      </Suspense>
       <Suspense fallback={<JobListSkeleton />}>
         <AppliedJobsList
           jobs={appliedJobs}
           currentPage={currentPage}
           totalPages={totalPages}
+          pageSize={pageSize}
         />
       </Suspense>
     </div>
   );
 }
 
-// Optional: Add revalidation if needed
-export const revalidate = 3600; // Revalidate once per hour
+export const revalidate = 3600;

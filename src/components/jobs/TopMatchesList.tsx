@@ -18,7 +18,10 @@ import MarkdownRenderer from "./MarkdownRenderer";
 import { Job } from "@/types";
 import { useRouter, useSearchParams } from "next/navigation"; // Added useSearchParams
 import {
+  formatFilterReason,
+  formatLevel,
   formatSalary,
+  formatSeenCount,
   getExternalJobUrl,
   sanitizeExternalUrl,
 } from "@/lib/jobs/formatters";
@@ -32,12 +35,31 @@ interface TopMatchesListProps {
   jobs: Job[];
   currentPage: number;
   totalPages: number;
+  pageSize: 10 | 25 | 100 | "all";
+}
+
+function getLevelBadgeColor(level: string | null): string {
+  switch (formatLevel(level)) {
+    case "Entry":
+    case "Associate":
+    case "Internship":
+      return "bg-teal-100 text-teal-800";
+    case "Mid-Senior":
+    case "Senior":
+      return "bg-orange-100 text-orange-800";
+    case "Director":
+    case "Executive":
+      return "bg-violet-100 text-violet-800";
+    default:
+      return "bg-gray-100 text-gray-700";
+  }
 }
 
 export default function TopMatchesList({
   jobs,
   currentPage,
   totalPages,
+  pageSize,
 }: TopMatchesListProps) {
   const [selectedJob, setSelectedJob] = useState<Job | null>(null); // Initialize as null
   const [isUpdating, setIsUpdating] = useState(false);
@@ -130,8 +152,10 @@ export default function TopMatchesList({
         throw new Error(errorMessage);
       }
 
-      const updatedJob: Job = await response.json();
-      setSelectedJob(updatedJob);
+      const updatedJob: Partial<Job> = await response.json();
+      setSelectedJob((currentJob) =>
+        currentJob ? { ...currentJob, ...updatedJob } : currentJob,
+      );
       // Toast notification instead of alert
       showToast("Job marked as applied successfully!", "success");
       router.refresh(); // Refresh the page to show updated jobs
@@ -178,8 +202,10 @@ export default function TopMatchesList({
         throw new Error(errorMessage);
       }
 
-      const updatedJob: Job = await response.json();
-      setSelectedJob(updatedJob);
+      const updatedJob: Partial<Job> = await response.json();
+      setSelectedJob((currentJob) =>
+        currentJob ? { ...currentJob, ...updatedJob } : currentJob,
+      );
 
       // Show toast instead of alert
       const message =
@@ -246,7 +272,7 @@ export default function TopMatchesList({
     : null;
 
   return (
-    <div className="flex flex-col md:flex-row gap-6 h-[calc(100vh-17.5rem)] bg-gray-50 rounded-lg overflow-hidden shadow-sm">
+    <div className="flex flex-col gap-6 rounded-lg bg-gray-50 shadow-sm md:min-h-0 md:flex-1 md:flex-row md:overflow-hidden">
       {/* Left Column: Job List */}
       <div className="w-full md:w-1/3 bg-white border-r border-gray-100 flex flex-col">
         <div className="p-4 border-b border-gray-100">
@@ -295,6 +321,30 @@ export default function TopMatchesList({
                         {job.applicant_count != null && <span>{job.applicant_count} applicants</span>}
                         {formatSalary(job) && <span>{formatSalary(job)}</span>}
                       </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {job.level && (
+                          <span
+                            className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${getLevelBadgeColor(job.level)}`}
+                          >
+                            {formatLevel(job.level)}
+                          </span>
+                        )}
+                        {job.archetype && (
+                          <span className="inline-flex rounded bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700">
+                            {job.archetype}
+                          </span>
+                        )}
+                        {formatSeenCount(job.seen_count) && (
+                          <span className="text-xs text-gray-500">
+                            {formatSeenCount(job.seen_count)}
+                          </span>
+                        )}
+                        {job.is_filtered && job.filter_reason && (
+                          <span className="inline-flex rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                            {formatFilterReason(job.filter_reason)}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {job.resume_score && (
@@ -337,14 +387,13 @@ export default function TopMatchesList({
                 </li>
               ))}
             </ul>
-            {totalPages > 1 && (
-              <div className="p-4 border-t border-gray-100 bg-white">
-                <PaginationControls
-                  currentPage={currentPage}
-                  totalPages={totalPages}
-                />
-              </div>
-            )}
+            <div className="p-4 border-t border-gray-100 bg-white">
+              <PaginationControls
+                currentPage={currentPage}
+                totalPages={totalPages}
+                pageSize={pageSize}
+              />
+            </div>
           </>
         ) : (
           <EmptyState />
@@ -389,7 +438,21 @@ export default function TopMatchesList({
                     )}
                     {selectedJobSalary && <span>{selectedJobSalary}</span>}
                     {selectedJob.recruiter_name && (
-                      <span>Recruiter: {selectedJob.recruiter_name}</span>
+                      <span>
+                        Recruiter:{" "}
+                        {selectedRecruiterProfileUrl ? (
+                          <a
+                            href={selectedRecruiterProfileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-indigo-600 hover:text-indigo-800 hover:underline"
+                          >
+                            {selectedJob.recruiter_name}
+                          </a>
+                        ) : (
+                          selectedJob.recruiter_name
+                        )}
+                      </span>
                     )}
                     {selectedJobRepostSummary && (
                       <span className="text-amber-700 font-medium">
@@ -436,7 +499,7 @@ export default function TopMatchesList({
                   </Link>
                 )}
 
-                {selectedJob.resume_link && (
+                {selectedJob.customized_resume_id && (
                   <button
                     onClick={() =>
                       handleViewResume(
@@ -519,24 +582,16 @@ export default function TopMatchesList({
                     {selectedJobRepostSummary || "Reposted role"}
                   </span>
                 )}
-                <span className="ml-auto text-xs text-gray-400 self-center">
-                  Scraped {new Date(selectedJob.scraped_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
-                </span>
+                {selectedJob.scraped_at && (
+                  <span className="ml-auto text-xs text-gray-400 self-center">
+                    Scraped {new Date(selectedJob.scraped_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
+                  </span>
+                )}
               </div>
             </div>
 
-            {(selectedRecruiterProfileUrl || hasReposts(selectedJob)) && (
+            {hasReposts(selectedJob) && (
               <div className="px-6 pt-4 space-y-4">
-                {selectedRecruiterProfileUrl && (
-                  <a
-                    href={selectedRecruiterProfileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-indigo-600 hover:text-indigo-800"
-                  >
-                    View recruiter profile
-                  </a>
-                )}
                 {hasReposts(selectedJob) && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                     <h3 className="font-medium text-amber-900">Listing history</h3>
@@ -568,7 +623,7 @@ export default function TopMatchesList({
             {/* Scrollable content for description */}
             <div className="p-6 flex-grow">
               <div className="prose max-w-none">
-                <MarkdownRenderer content={selectedJob.description} />
+                <MarkdownRenderer content={selectedJob.description || ""} />
               </div>
             </div>
           </div>

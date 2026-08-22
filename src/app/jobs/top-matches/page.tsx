@@ -1,144 +1,90 @@
+import { Suspense } from "react";
+
+import FilterButton from "@/components/jobs/FilterButton";
+import FilterChips from "@/components/jobs/FilterChips";
+import JobListSkeleton from "@/components/jobs/JobListSkeleton";
+import RefreshButton from "@/components/jobs/RefreshButton";
+import SearchComponent from "@/components/jobs/SearchComponent";
+import SortOptions from "@/components/jobs/SortOptions";
+import TopMatchesList from "@/components/jobs/TopMatchesList";
+import { parseFilterSearchParams } from "@/lib/filters/searchParams";
+import type { FilterId, SortField } from "@/lib/filters/types";
 import {
   getTopScoredJobs,
   getTopScoredJobsCount,
 } from "@/lib/supabase/queries";
-import TopMatchesList from "@/components/jobs/TopMatchesList";
-import { Suspense } from "react";
-import RefreshButton from "@/components/jobs/RefreshButton";
-import FilterButton from "@/components/jobs/FilterButton";
-import { Job } from "@/types";
-import JobListSkeleton from "@/components/jobs/JobListSkeleton";
-import SearchComponent from "@/components/jobs/SearchComponent"; // Added import
 
-const PAGE_SIZE = 10; // Define page size
+const DEFAULT_PAGE_SIZE = 25;
+const SUPPORTED_FILTERS: readonly FilterId[] = [
+  "provider",
+  "interest",
+  "score",
+  "level",
+  "archetype",
+  "filterStatus",
+  "hasSalary",
+  "salaryRange",
+  "repostCount",
+  "seenCount",
+  "datePosted",
+  "location",
+];
+const SUPPORTED_SORTS: readonly SortField[] = [
+  "posted_at",
+  "resume_score",
+  "salary_min",
+  "repost_count",
+  "seen_count",
+];
 
 export default async function TopMatchesPage({
   searchParams,
 }: {
   searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  const params = await searchParams;
-  // Get current page from search params, default to 1
-  const currentPage = parseInt(params?.page as string) || 1;
-
-  // Get search query from search params
-  const searchQuery = params?.query as string;
-
-  // Get provider filter from search params
-  const provider = params?.provider as string;
-  const providerFilter = provider && provider !== "all" ? provider : undefined;
-
-  // Get interest filter from search params
-  const interestParam = params?.interest as string;
-  let interestFilter: boolean | null | undefined = undefined;
-  if (interestParam === "true") {
-    interestFilter = true;
-  } else if (interestParam === "false") {
-    interestFilter = false;
-  } else if (interestParam === "null") {
-    interestFilter = null;
-  }
-
-  // Get resume score filter from search params
-  const minScoreParam = params?.minScore as string;
-  const maxScoreParam = params?.maxScore as string;
-
-  const minScore = minScoreParam ? parseInt(minScoreParam) : undefined;
-  const maxScore = maxScoreParam ? parseInt(maxScoreParam) : undefined;
-
-  // Fetch the jobs for the current page with filters
-  const topJobs: Job[] = await getTopScoredJobs(
-    currentPage,
-    PAGE_SIZE,
-    providerFilter,
-    minScore,
-    maxScore,
-    interestFilter,
-    searchQuery
-  );
-
-  // Fetch total count with filters
-  const totalCount = await getTopScoredJobsCount(
-    providerFilter,
-    minScore,
-    maxScore,
-    interestFilter,
-    searchQuery
-  );
-
-  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-
-  // Display filter status
-  const getFilterStatusText = () => {
-    let statusText = "Showing jobs that best match your resume";
-    const filtersApplied = [];
-
-    if (searchQuery) {
-      filtersApplied.push(`for "${searchQuery}"`);
-    }
-
-    if (providerFilter) {
-      const providerName =
-        providerFilter === "linkedin" ? "LinkedIn" : "Careers Future";
-      filtersApplied.push(`${providerName} jobs`);
-    }
-
-    if (interestFilter !== undefined) {
-      if (interestFilter === true) {
-        filtersApplied.push("marked as Interested");
-      } else if (interestFilter === false) {
-        filtersApplied.push("marked as Not Interested");
-      } else if (interestFilter === null) {
-        filtersApplied.push("not yet marked for interest");
-      }
-    }
-
-    if (minScore !== undefined && maxScore !== undefined) {
-      filtersApplied.push(
-        `with resume scores between ${minScore} and ${maxScore}`
-      );
-    } else if (minScore !== undefined) {
-      filtersApplied.push(`with resume scores >= ${minScore}`);
-    } else if (maxScore !== undefined) {
-      filtersApplied.push(`with resume scores <= ${maxScore}`);
-    }
-
-    if (filtersApplied.length > 0) {
-      statusText = `Showing ${filtersApplied.join(
-        " "
-      )} that best match your resume`;
-    }
-
-    return `${statusText} (${totalCount} total)`;
-  };
+  const filters = parseFilterSearchParams((await searchParams) ?? {});
+  const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
+  const currentPage = pageSize === "all" ? 1 : filters.page ?? 1;
+  const options = { ...filters, page: currentPage, pageSize };
+  const [topJobs, totalCount] = await Promise.all([
+    getTopScoredJobs(options),
+    getTopScoredJobsCount(options),
+  ]);
+  const totalPages = pageSize === "all" ? 1 : Math.ceil(totalCount / pageSize);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-      {/* Page header with actions */}
+    <div className="mx-auto flex h-full min-h-0 max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Top Job Matches</h1>
-          <p className="mt-1 text-sm text-gray-500">{getFilterStatusText()}</p>
+          <p className="mt-1 text-sm text-gray-500">
+            Jobs that best match your resume ({totalCount} total)
+          </p>
         </div>
 
         <div className="flex items-center space-x-3">
-          <SearchComponent /> {/* Added SearchComponent */}
-          <FilterButton />
+          <Suspense fallback={null}>
+            <SearchComponent />
+            <FilterButton supportedFilters={SUPPORTED_FILTERS} />
+            <SortOptions supportedSorts={SUPPORTED_SORTS} />
+          </Suspense>
           <RefreshButton currentPage={currentPage} />
         </div>
       </div>
 
-      {/* Main content with loading state */}
+      <Suspense fallback={null}>
+        <FilterChips supportedFilters={SUPPORTED_FILTERS} />
+      </Suspense>
       <Suspense fallback={<JobListSkeleton />}>
         <TopMatchesList
           jobs={topJobs}
           currentPage={currentPage}
           totalPages={totalPages}
+          pageSize={pageSize}
         />
       </Suspense>
     </div>
   );
 }
 
-// Optional: Add revalidation if needed
-export const revalidate = 3600; // Revalidate once per hour
+export const revalidate = 3600;

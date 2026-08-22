@@ -10,61 +10,54 @@ import {
 type KeywordInsight = {
   keyword: string;
   category: string;
-  archetype?: string;
   count: number;
   last_updated?: string | null;
 };
 
-type QueryCall =
-  | { method: "from"; args: [table: string] }
-  | { method: "select"; args: [fields: string, options?: { count?: string }] }
-  | { method: "order"; args: [column: string, options: { ascending: boolean }] }
-  | { method: "eq"; args: [column: string, value: string] }
-  | { method: "gte"; args: [column: string, value: number] }
-  | { method: "range"; args: [from: number, to: number] };
+type QueryCall = {
+  method: "rpc";
+  args: [
+    name: string,
+    params: {
+      p_providers: string[] | null;
+      p_archetypes: string[] | null;
+      p_levels: string[] | null;
+      p_filter_status: string;
+      p_companies: string[] | null;
+      p_job_titles: string[] | null;
+      p_provinces: string[] | null;
+      p_location_scopes: string[] | null;
+      p_exclude_metros: string[] | null;
+      p_category: string | null;
+      p_min_count: number;
+      p_limit: number;
+      p_offset: number;
+    },
+  ];
+};
 
-function createSupabaseMock(responseData = [{
+function createSupabaseMock(responseData: Array<KeywordInsight & { total_count?: number }> = [{
   keyword: "roadmap",
   category: "skill",
-  archetype: "software_tpm",
   count: 5,
+  total_count: 1,
   last_updated: "2026-06-11",
 }]) {
   const calls: QueryCall[] = [];
 
-  const query = {
-    select(fields: string, options?: { count?: string }) {
-      calls.push({ method: "select", args: [fields, options] });
-      return query;
-    },
-    order(column: string, options: { ascending: boolean }) {
-      calls.push({ method: "order", args: [column, options] });
-      return query;
-    },
-    eq(column: string, value: string) {
-      calls.push({ method: "eq", args: [column, value] });
-      return query;
-    },
-    gte(column: string, value: number) {
-      calls.push({ method: "gte", args: [column, value] });
-      return query;
-    },
-    async range(from: number, to: number) {
-      calls.push({ method: "range", args: [from, to] });
-      return {
-        data: responseData,
-        error: null,
-        count: responseData.length,
-      };
-    },
-  };
-
   return {
     calls,
     client: {
-      from(table: string) {
-        calls.push({ method: "from", args: [table] });
-        return query;
+      async rpc(name: string, params: QueryCall["args"][1]) {
+        calls.push({ method: "rpc", args: [name, params] });
+        const data = responseData.map((row) => ({
+          ...row,
+          total_count: row.total_count ?? responseData.length,
+        }));
+        return {
+          data,
+          error: null,
+        };
       },
     },
   };
@@ -83,7 +76,7 @@ test.afterEach(() => {
   __resetKeywordInsightsClientFactoryForTests();
 });
 
-test("getKeywordInsights defaults to software_tpm, minCount 2, and selects archetype", async () => {
+test("getKeywordInsights calls the filtered RPC with safe defaults", async () => {
   const { client, calls } = createSupabaseMock();
 
   __setKeywordInsightsClientFactoryForTests(async () => client);
@@ -91,70 +84,77 @@ test("getKeywordInsights defaults to software_tpm, minCount 2, and selects arche
   const result = await getKeywordInsights();
 
   assert.equal(result.totalCount, 1);
-  assert.equal(result.keywords[0]?.archetype, "software_tpm");
   assert.deepEqual(calls, [
-    { method: "from", args: ["keyword_insights"] },
     {
-      method: "select",
-      args: ["keyword, category, archetype, count, last_updated", { count: "exact" }],
+      method: "rpc",
+      args: ["get_filtered_keyword_insights", {
+        p_providers: null,
+        p_archetypes: ["software_tpm"],
+        p_levels: null,
+        p_filter_status: "unfiltered",
+        p_companies: null,
+        p_job_titles: null,
+        p_provinces: null,
+        p_location_scopes: null,
+        p_exclude_metros: null,
+        p_category: null,
+        p_min_count: 2,
+        p_limit: 1000,
+        p_offset: 0,
+      }],
     },
-    { method: "order", args: ["count", { ascending: false }] },
-    { method: "order", args: ["keyword", { ascending: true }] },
-    { method: "eq", args: ["archetype", "software_tpm"] },
-    { method: "gte", args: ["count", 2] },
-    { method: "range", args: [0, 999] },
   ]);
 });
 
-test("getKeywordInsights applies provider filter only when provided", async () => {
-  const withProvider = createSupabaseMock();
-  __setKeywordInsightsClientFactoryForTests(async () => withProvider.client);
+test("getKeywordInsights maps array filters and status to RPC parameters", async () => {
+  const mock = createSupabaseMock();
+  __setKeywordInsightsClientFactoryForTests(async () => mock.client);
 
-  await getKeywordInsights({ archetype: "data_pm", provider: "linkedin", minCount: 7 });
+  await getKeywordInsights({
+    providers: ["linkedin", "careers_future"],
+    archetypes: ["software_tpm", "data_pm"],
+    levels: ["Entry level"],
+    filterStatus: "show_filtered",
+    companies: ["Acme"],
+    jobTitles: ["Program Manager"],
+    category: "skill",
+    minCount: 7,
+  });
 
-  assert.deepEqual(
-    withProvider.calls.filter((call) => call.method === "eq" || call.method === "gte"),
-    [
-      { method: "eq", args: ["archetype", "data_pm"] },
-      { method: "gte", args: ["count", 7] },
-      { method: "eq", args: ["provider", "linkedin"] },
-    ],
-  );
-
-  const withoutProvider = createSupabaseMock();
-  __setKeywordInsightsClientFactoryForTests(async () => withoutProvider.client);
-
-  await getKeywordInsights({ archetype: "data_pm", minCount: 7 });
-
-  assert.deepEqual(
-    withoutProvider.calls.filter((call) => call.method === "eq" || call.method === "gte"),
-    [
-      { method: "eq", args: ["archetype", "data_pm"] },
-      { method: "gte", args: ["count", 7] },
-    ],
-  );
+  assert.deepEqual(mock.calls[0]?.args[1], {
+    p_providers: ["linkedin", "careers_future"],
+    p_archetypes: ["software_tpm", "data_pm"],
+    p_levels: ["Entry level"],
+    p_filter_status: "all",
+    p_companies: ["Acme"],
+    p_job_titles: ["Program Manager"],
+    p_provinces: null,
+    p_location_scopes: null,
+    p_exclude_metros: null,
+    p_category: "skill",
+    p_min_count: 7,
+    p_limit: 1000,
+    p_offset: 0,
+  });
 });
 
-test("category filtering operates only on already-scoped software_tpm rows", async () => {
+test("RPC result rows retain category data without total_count metadata", async () => {
   const scopedRows: KeywordInsight[] = [
     {
       keyword: "Roadmapping",
       category: "skill",
-      archetype: "software_tpm",
       count: 5,
       last_updated: "2026-06-11",
     },
     {
       keyword: "Python",
       category: "technology",
-      archetype: "software_tpm",
       count: 2,
       last_updated: "2026-06-11",
     },
     {
       keyword: "PMP",
       category: "certification",
-      archetype: "software_tpm",
       count: 3,
       last_updated: "2026-06-11",
     },
@@ -166,18 +166,12 @@ test("category filtering operates only on already-scoped software_tpm rows", asy
   const result = await getKeywordInsights({ archetype: "software_tpm" });
   const technologyRows = filterScopedKeywordInsightsByCategory(result.keywords, "technology");
 
-  assert.deepEqual(
-    result.keywords.map((row) => row.archetype),
-    ["software_tpm", "software_tpm", "software_tpm"],
-  );
   assert.deepEqual(technologyRows, [
     {
       keyword: "Python",
       category: "technology",
-      archetype: "software_tpm",
       count: 2,
       last_updated: "2026-06-11",
     },
   ]);
-  assert.equal(technologyRows.some((row) => row.archetype !== "software_tpm"), false);
 });

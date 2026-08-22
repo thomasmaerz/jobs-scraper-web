@@ -1,4 +1,26 @@
-// Define basic types (you can refine these later based on your actual table structure)
+export type JobKeywordInsightCategory =
+  | "skill"
+  | "technology"
+  | "certification"
+  | "attribute";
+
+export interface JobKeywordInsight {
+  job_id: string;
+  keyword: string;
+  category: JobKeywordInsightCategory;
+  analyzed_at: string;
+  archetype: string;
+  provider: string | null;
+}
+
+export interface KeywordInsight {
+  keyword: string;
+  category: string;
+  archetype?: string;
+  count: number;
+  last_updated?: string | null;
+}
+
 export interface ListingInstance {
   job_id: string;
   scraped_at: string;
@@ -13,50 +35,56 @@ export interface ListingInstance {
 
 export interface Job {
   job_id: string;
-  company: string;
-  job_title: string;
-  level: string;
-  location: string;
-  description: string;
-  status: string;
-  is_active: boolean;
-  application_date: string;
-  resume_score?: number;
-  notes?: string;
-  scraped_at: string;
-  last_checked: string;
-  job_state: string;
+  company: string | null;
+  job_title: string | null;
+  level: string | null;
+  location: string | null;
+  location_province_code?: string | null;
+  location_scope?: string | null;
+  location_metro?: string | null;
+  description: string | null;
+  status: string | null;
+  is_active: boolean | null;
+  application_date: string | null;
+  resume_score: number | null;
+  notes: string | null;
+  scraped_at: string | null;
+  last_checked: string | null;
+  job_state: string | null;
   resume_score_stage: string;
   is_interested: boolean | null;
-  customized_resume_id?: string | null;
-  customized_resumes?: Resume | null;
+  customized_resume_id: string | null;
+  customized_resumes?: Pick<Resume, "resume_link"> | null;
   resume_link?: string | null;
-  provider: string;
-  posted_at?: string | null;
-  last_seen_posted_at?: string | null;
-  posted_relative_text?: string | null;
-  applicant_count?: number | null;
-  salary_text?: string | null;
-  salary_min?: number | null;
-  salary_max?: number | null;
-  salary_currency?: string | null;
-  recruiter_name?: string | null;
-  recruiter_profile_url?: string | null;
-  recruiter_identifier?: string | null;
-  original_job_id?: string | null;
-  latest_job_id?: string | null;
-  canonical_key?: string | null;
-  first_seen_at?: string | null;
-  last_seen_at?: string | null;
-  seen_count?: number | null;
-  repost_count?: number | null;
-  search_query?: string | null;
-  archetype?: string | null;
-  filter_profile?: string | null;
-  is_filtered?: boolean;
-  filter_reason?: string | null;
-  is_entry_level_filtered?: boolean;
-  listing_instances?: ListingInstance[] | null;
+  provider: string | null;
+  posted_at: string | null;
+  last_seen_posted_at: string | null;
+  posted_relative_text: string | null;
+  applicant_count: number | null;
+  salary_text: string | null;
+  salary_min: number | null;
+  salary_max: number | null;
+  salary_currency: string | null;
+  recruiter_name: string | null;
+  recruiter_profile_url: string | null;
+  recruiter_identifier: string | null;
+  original_job_id: string | null;
+  latest_job_id: string | null;
+  canonical_key: string | null;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+  seen_count: number | null;
+  repost_count: number | null;
+  search_query: string | null;
+  archetype: string | null;
+  filter_profile: string | null;
+  is_filtered: boolean | null;
+  filter_reason: string | null;
+  is_entry_level_filtered: boolean | null;
+  description_fingerprint: string | null;
+  insights_analyzed_at: string | null;
+  insights_reanalyzed_at: string | null;
+  listing_instances: ListingInstance[] | null;
 }
 
 // --- Resume Related Interfaces ---
