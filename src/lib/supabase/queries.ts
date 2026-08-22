@@ -111,7 +111,7 @@ type LegacyInterest = boolean | null | undefined;
 type InternalJobListOptions = Omit<JobListQueryOptions, "interest"> & {
   interest?: JobListQueryOptions["interest"] | LegacyInterest;
 };
-type JobListKind = "new" | "top" | "applied";
+type JobListKind = "all" | "new" | "top" | "applied";
 
 const APPLIED_STATUSES: readonly ApplicationStatus[] = [
   "applied",
@@ -119,6 +119,7 @@ const APPLIED_STATUSES: readonly ApplicationStatus[] = [
   "offer",
 ];
 const JOB_SORT_FIELDS: Readonly<Record<JobListKind, readonly SortField[]>> = {
+  all: ["posted_at", "resume_score", "salary_min", "repost_count", "seen_count"],
   new: ["posted_at", "resume_score", "salary_min", "repost_count", "seen_count"],
   top: ["posted_at", "resume_score", "salary_min", "repost_count", "seen_count"],
   applied: [
@@ -131,6 +132,7 @@ const JOB_SORT_FIELDS: Readonly<Record<JobListKind, readonly SortField[]>> = {
   ],
 };
 const DEFAULT_SORT: Readonly<Record<JobListKind, SortField>> = {
+  all: "posted_at",
   new: "posted_at",
   top: "resume_score",
   applied: "application_date",
@@ -215,13 +217,15 @@ function applyJobPredicates(
   kind: JobListKind,
   options: InternalJobListOptions,
 ) {
-  let query = initialQuery.eq("is_active", true).eq("job_state", "new");
+  let query = kind === "all"
+    ? initialQuery
+    : initialQuery.eq("is_active", true).eq("job_state", "new");
 
   if (kind === "applied") {
     query = options.applicationStatus
       ? query.eq("status", options.applicationStatus)
       : query.in("status", APPLIED_STATUSES);
-  } else {
+  } else if (kind !== "all") {
     query = query.eq("status", "new");
   }
 
@@ -237,7 +241,7 @@ function applyJobPredicates(
       : undefined);
   const maxScore =
     finiteNumber(options.maxScore) ??
-    (useScoreDefaults && kind !== "applied" ? 100 : undefined);
+    (useScoreDefaults && (kind === "new" || kind === "top") ? 100 : undefined);
   if (minScore !== undefined) query = query.gte("resume_score", minScore);
   if (maxScore !== undefined) query = query.lte("resume_score", maxScore);
   if (options.provider) query = query.eq("provider", options.provider);
@@ -276,7 +280,7 @@ function applyJobPredicates(
 
   if (options.filterStatus === "entry_level") {
     query = query.eq("is_entry_level_filtered", true);
-  } else if (options.filterStatus !== "show_filtered") {
+  } else if (options.filterStatus !== "show_filtered" && kind !== "all") {
     query = query.or("is_filtered.is.null,is_filtered.eq.false");
   }
 
@@ -405,6 +409,18 @@ export async function getNewJobs(
   query?: string,
 ): Promise<Job[]> {
   return getJobRows("new", legacyListOptions(optionsOrPage, pageSize, provider, minScore, maxScore, interest, query));
+}
+
+export async function getAllJobs(
+  options: JobListQueryOptions = {},
+): Promise<Job[]> {
+  return getJobRows("all", options);
+}
+
+export async function getAllJobsCount(
+  options: JobListQueryOptions = {},
+): Promise<number> {
+  return getJobCount("all", options);
 }
 
 export async function getAllActiveJobsCount(options?: JobListQueryOptions): Promise<number>;

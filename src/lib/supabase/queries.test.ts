@@ -5,6 +5,8 @@ import { isDeepStrictEqual } from "node:util";
 import {
   __resetSupabaseClientFactoryForTests,
   __setSupabaseClientFactoryForTests,
+  getAllJobs,
+  getAllJobsCount,
   getAllActiveJobsCount,
   getAppliedJobs,
   getAppliedJobsCount,
@@ -106,6 +108,7 @@ async function rowCalls(
 }
 
 const jobLists = [
+  { name: "all", rows: getAllJobs, count: getAllJobsCount },
   { name: "new", rows: getNewJobs, count: getAllActiveJobsCount },
   { name: "top", rows: getTopScoredJobs, count: getTopScoredJobsCount },
   { name: "applied", rows: getAppliedJobs, count: getAppliedJobsCount },
@@ -115,7 +118,7 @@ test.afterEach(() => {
   __resetSupabaseClientFactoryForTests();
 });
 
-test("new, top, and applied row/count queries keep every predicate in parity", async () => {
+test("all, new, top, and applied row/count queries keep every predicate in parity", async () => {
   for (const list of jobLists) {
     const options: JobListQueryOptions = {
       provider: "linkedin",
@@ -146,6 +149,16 @@ test("new, top, and applied row/count queries keep every predicate in parity", a
 
     assert.deepEqual(predicates(rowMock.calls), predicates(countMock.calls), list.name);
   }
+});
+
+test("all jobs has no implicit active, state, status, interest, score, or filtered predicates", async () => {
+  const calls = await rowCalls(getAllJobs);
+
+  assert.deepEqual(predicates(calls), []);
+  assert.deepEqual(calls.filter((call) => call.method === "order"), [
+    { method: "order", args: ["posted_at", { ascending: false }] },
+    { method: "order", args: ["job_id", { ascending: true }] },
+  ]);
 });
 
 test("job-list filters emit their individual Supabase predicates", async () => {
@@ -242,6 +255,7 @@ test("applied status supports every value and has an exact default", async () =>
 
 test("sort fields and orders are allowlisted per job list", async () => {
   const configs = [
+    { rows: getAllJobs, allowed: SORT_FIELDS.filter((field) => field !== "application_date"), fallback: "posted_at" },
     { rows: getNewJobs, allowed: SORT_FIELDS.filter((field) => field !== "application_date"), fallback: "posted_at" },
     { rows: getTopScoredJobs, allowed: SORT_FIELDS.filter((field) => field !== "application_date"), fallback: "resume_score" },
     { rows: getAppliedJobs, allowed: [...SORT_FIELDS], fallback: "application_date" },

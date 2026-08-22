@@ -36,6 +36,7 @@ interface TopMatchesListProps {
   currentPage: number;
   totalPages: number;
   pageSize: 10 | 25 | 100 | "all";
+  listTitle?: string;
 }
 
 function getLevelBadgeColor(level: string | null): string {
@@ -60,6 +61,7 @@ export default function TopMatchesList({
   currentPage,
   totalPages,
   pageSize,
+  listTitle = "Job Matches",
 }: TopMatchesListProps) {
   const [selectedJob, setSelectedJob] = useState<Job | null>(null); // Initialize as null
   const [isUpdating, setIsUpdating] = useState(false);
@@ -276,7 +278,7 @@ export default function TopMatchesList({
       {/* Left Column: Job List */}
       <div className="w-full md:w-1/3 bg-white border-r border-gray-100 flex flex-col">
         <div className="p-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-800">Job Matches</h2>
+          <h2 className="text-lg font-semibold text-gray-800">{listTitle}</h2>
           <p className="text-sm text-gray-500">
             {jobs.length} {jobs.length === 1 ? "result" : "results"} found
           </p>
@@ -364,6 +366,11 @@ export default function TopMatchesList({
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                         <CheckCircle className="h-3 w-3 mr-1" />
                         Applied
+                      </span>
+                    )}
+                    {(job.job_state === "expired" || job.is_active === false) && (
+                      <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
+                        Expired
                       </span>
                     )}
                     {job.is_interested === true && (

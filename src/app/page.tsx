@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   getAllActiveJobsCount,
+  getAllJobsCount,
   getAppliedJobsCount,
   getTopScoredJobsCount,
   getExpiredJobsCount,
@@ -76,6 +77,7 @@ function StatCard({
 
 export default async function Home() {
   const totalNewJobs = await getAllActiveJobsCount();
+  const totalJobs = await getAllJobsCount();
   const totalAppliedJobs = await getAppliedJobsCount();
   const totalTopMatches = await getTopScoredJobsCount();
   const expiredJobsCount = await getExpiredJobsCount();
@@ -112,6 +114,14 @@ export default async function Home() {
       href: "/jobs/new",
       description: "Recently scraped job opportunities.",
       color: "bg-indigo-500",
+    },
+    {
+      title: "All Jobs",
+      value: totalJobs,
+      icon: <Briefcase size={20} />,
+      href: "/jobs/all",
+      description: "Every job listing, including expired jobs.",
+      color: "bg-slate-600",
     },
     {
       title: "Applied Jobs (Total)", // Clarified title

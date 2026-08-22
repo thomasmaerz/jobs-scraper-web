@@ -43,6 +43,7 @@ export default function Navbar() {
 
   const navItems = [
     { href: "/", icon: <Home size={18} />, text: "Home" },
+    { href: "/jobs/all", icon: <Briefcase size={18} />, text: "All" },
     { href: "/jobs/top-matches", icon: <Star size={18} />, text: "Matches" },
     { href: "/jobs/new", icon: <Zap size={18} />, text: "New" },
     { href: "/jobs/applied", icon: <CheckSquare size={18} />, text: "Applied" },
