@@ -1,23 +1,17 @@
-import type {
-  Job,
-  JobKeywordInsight as SharedJobKeywordInsight,
-  KeywordInsight,
-  Resume,
-} from "../../types.ts";
+import type { Job, Resume } from "../../types.ts";
 import type { PostgrestError } from "@supabase/supabase-js";
-import type {
-  ApplicationStatus,
-  FilterState,
-  FilterStatus,
-  SortField,
-  SortOrder,
-} from "../filters/types.ts";
+import {
+  getNextKeywordInsightsRange,
+  shouldContinueKeywordInsightsFetch,
+} from "./keywordInsightsPagination.ts";
 
-if (!process.env.NODE_TEST_CONTEXT) {
-  await import("server-only");
-}
-
-export type { KeywordInsight } from "../../types.ts";
+export type KeywordInsight = {
+  keyword: string;
+  category: string;
+  archetype?: string;
+  count: number;
+  last_updated?: string | null;
+};
 
 export type KeywordInsightsResult = {
   keywords: KeywordInsight[];
@@ -25,7 +19,6 @@ export type KeywordInsightsResult = {
 };
 
 type SupabaseClientFactory = () => Promise<any>;
-type LegacyProvider = string | undefined;
 
 async function createDefaultSupabaseServerClient() {
   const { createSupabaseServerClient } = await import(
@@ -35,27 +28,20 @@ async function createDefaultSupabaseServerClient() {
   return createSupabaseServerClient();
 }
 
-let supabaseClientFactory: SupabaseClientFactory = createDefaultSupabaseServerClient;
-const createSupabaseServerClient = () => supabaseClientFactory();
+const createSupabaseServerClient: SupabaseClientFactory =
+  createDefaultSupabaseServerClient;
 
-export function __setSupabaseClientFactoryForTests(
-  factory: SupabaseClientFactory,
-) {
-  supabaseClientFactory = factory;
-}
-
-export function __resetSupabaseClientFactoryForTests() {
-  supabaseClientFactory = createDefaultSupabaseServerClient;
-}
+let keywordInsightsClientFactory: SupabaseClientFactory =
+  createDefaultSupabaseServerClient;
 
 export function __setKeywordInsightsClientFactoryForTests(
   factory: SupabaseClientFactory,
 ) {
-  __setSupabaseClientFactoryForTests(factory);
+  keywordInsightsClientFactory = factory;
 }
 
 export function __resetKeywordInsightsClientFactoryForTests() {
-  __resetSupabaseClientFactoryForTests();
+  keywordInsightsClientFactory = createDefaultSupabaseServerClient;
 }
 
 // Helper function to handle Supabase response errors
@@ -68,11 +54,8 @@ async function handleResponse({
 }): Promise<any> {
   // Keep 'any' or refine return type
   if (error) {
-    const details = [error.code, error.message, error.details, error.hint]
-      .filter(Boolean)
-      .join(" | ");
-    console.error("Supabase response error:", details);
-    throw new Error(details || "Supabase query failed");
+    console.error("Supabase response error:", error);
+    throw new Error(error.message); // Or handle error more gracefully
   }
   // Allow returning empty arrays or potentially null for single results handled elsewhere
   // Removed the !data check here as it might be too strict for all cases
@@ -81,549 +64,362 @@ async function handleResponse({
 
 // --- Query Functions ---
 
-export interface JobListQueryOptions<TArchetype extends string = string>
-  extends Omit<FilterState<TArchetype>, "pageSize"> {
-  pageSize?: number | "all";
-}
-
-const dateCutoffCache = new WeakMap<
-  object,
-  Partial<Record<"24h" | "7d" | "30d", string>>
->();
-
-export interface KeywordInsightsQueryOptions {
-  provider?: string | readonly string[];
-  providers?: readonly string[];
-  archetype?: string | readonly string[];
-  archetypes?: readonly string[];
-  levels?: readonly string[];
-  filterStatus?: FilterStatus | "all" | "filtered" | "unfiltered";
-  companies?: readonly string[];
-  jobTitles?: readonly string[];
-  provinces?: readonly string[];
-  locationScopes?: readonly string[];
-  excludeMetros?: readonly string[];
-  category?: string;
+export async function getKeywordInsights(options: {
+  archetype?: string;
+  provider?: string;
   minCount?: number;
-}
+} = {}): Promise<KeywordInsightsResult> {
+  const supabase = await keywordInsightsClientFactory();
+  const { archetype = "software_tpm", provider, minCount = 2 } = options;
 
-type LegacyInterest = boolean | null | undefined;
-type InternalJobListOptions = Omit<JobListQueryOptions, "interest"> & {
-  interest?: JobListQueryOptions["interest"] | LegacyInterest;
-};
-type JobListKind = "new" | "top" | "applied";
-
-const APPLIED_STATUSES: readonly ApplicationStatus[] = [
-  "applied",
-  "interviewing",
-  "offer",
-];
-const JOB_SORT_FIELDS: Readonly<Record<JobListKind, readonly SortField[]>> = {
-  new: ["posted_at", "resume_score", "salary_min", "repost_count", "seen_count"],
-  top: ["posted_at", "resume_score", "salary_min", "repost_count", "seen_count"],
-  applied: [
-    "posted_at",
-    "resume_score",
-    "application_date",
-    "salary_min",
-    "repost_count",
-    "seen_count",
-  ],
-};
-const DEFAULT_SORT: Readonly<Record<JobListKind, SortField>> = {
-  new: "posted_at",
-  top: "resume_score",
-  applied: "application_date",
-};
-
-function nonEmpty(values: readonly string[] | undefined): string[] | null {
-  const normalized = Array.from(
-    new Set(values?.map((value) => value.trim()).filter(Boolean)),
-  );
-  return normalized.length ? normalized : null;
-}
-
-function arrayOption(
-  plural: readonly string[] | undefined,
-  singular: string | readonly string[] | undefined,
-  fallback?: readonly string[],
-): string[] | null {
-  if (plural !== undefined) return nonEmpty(plural);
-  if (Array.isArray(singular)) return nonEmpty(singular);
-  if (typeof singular === "string") return nonEmpty([singular]);
-  return fallback ? nonEmpty(fallback) : null;
-}
-
-function finiteNumber(value: number | undefined): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function safePositiveInteger(value: number | undefined, fallback: number): number {
-  return Number.isSafeInteger(value) && (value ?? 0) > 0 ? value! : fallback;
-}
-
-function pageRange(options: InternalJobListOptions) {
-  if (options.pageSize === "all") return null;
-  const page = safePositiveInteger(options.page, 1);
-  const pageSize = Math.min(safePositiveInteger(options.pageSize, 25), 100);
-  const from = (page - 1) * pageSize;
-  return { from, to: from + pageSize - 1 };
-}
-
-function sanitizeSearchTerm(value: string | undefined): string | undefined {
-  const sanitized = value
-    ?.trim()
-    .slice(0, 500)
-    .replace(/[^\p{L}\p{N}\s&+\/-]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return sanitized || undefined;
-}
-
-function datePostedCutoff(
-  value: InternalJobListOptions["datePosted"],
-  options: InternalJobListOptions,
-): string | undefined {
-  const age = value === "24h" ? 24 : value === "7d" ? 24 * 7 : value === "30d" ? 24 * 30 : 0;
-  if (!age || !value) return undefined;
-  const cached = dateCutoffCache.get(options)?.[value];
-  if (cached) return cached;
-  const cutoffDate = new Date(Date.now() - age * 60 * 60 * 1000);
-  cutoffDate.setUTCSeconds(0, 0);
-  const cutoff = cutoffDate.toISOString();
-  const cutoffs = dateCutoffCache.get(options) ?? {};
-  cutoffs[value] = cutoff;
-  dateCutoffCache.set(options, cutoffs);
-  return cutoff;
-}
-
-function applyInterestPredicate(
-  query: any,
-  interest: InternalJobListOptions["interest"],
-  useNewPageDefault: boolean,
-) {
-  if (interest === true || interest === "true") return query.is("is_interested", true);
-  if (interest === false || interest === "false") return query.is("is_interested", false);
-  if (interest === null || interest === "null") return query.is("is_interested", null);
-  return useNewPageDefault
-    ? query.or("is_interested.is.null,is_interested.eq.true")
-    : query;
-}
-
-function applyJobPredicates(
-  initialQuery: any,
-  kind: JobListKind,
-  options: InternalJobListOptions,
-) {
-  let query = initialQuery.eq("is_active", true).eq("job_state", "new");
-
-  if (kind === "applied") {
-    query = options.applicationStatus
-      ? query.eq("status", options.applicationStatus)
-      : query.in("status", APPLIED_STATUSES);
-  } else {
-    query = query.eq("status", "new");
-  }
-
-  const useScoreDefaults = options.filterStatus !== "entry_level";
-  const minScore =
-    finiteNumber(options.minScore) ??
-    (useScoreDefaults
-      ? kind === "top"
-        ? 50
-        : kind === "new"
-          ? 0
-          : undefined
-      : undefined);
-  const maxScore =
-    finiteNumber(options.maxScore) ??
-    (useScoreDefaults && kind !== "applied" ? 100 : undefined);
-  if (minScore !== undefined) query = query.gte("resume_score", minScore);
-  if (maxScore !== undefined) query = query.lte("resume_score", maxScore);
-  if (options.provider) query = query.eq("provider", options.provider);
-  if (options.level?.length) query = query.in("level", options.level);
-  if (options.archetype?.length) query = query.in("archetype", options.archetype);
-  if (options.province?.length) {
-    query = query.in("location_province_code", options.province);
-  }
-  if (options.locationScope?.length) {
-    query = query.in("location_scope", options.locationScope);
-  }
-  if (options.excludeMetro?.length) {
-    query = query.or(
-      `location_metro.is.null,location_metro.not.in.(${options.excludeMetro.join(",")})`,
-    );
-  }
-
-  query = applyInterestPredicate(
-    query,
-    options.interest,
-    kind === "new" && options.filterStatus !== "entry_level",
-  );
-
-  if (options.filterStatus === "entry_level") {
-    query = query.eq("is_entry_level_filtered", true);
-  } else if (options.filterStatus !== "show_filtered") {
-    query = query.or("is_filtered.is.null,is_filtered.eq.false");
-  }
-
-  if (options.hasSalary) query = query.not("salary_min", "is", null);
-  const salaryMin = finiteNumber(options.salaryMin);
-  const salaryMax = finiteNumber(options.salaryMax);
-  if (options.hasSalary && salaryMin !== undefined) query = query.gte("salary_min", salaryMin);
-  if (options.hasSalary && salaryMax !== undefined) query = query.lte("salary_min", salaryMax);
-
-  const minRepostCount = finiteNumber(options.minRepostCount);
-  const minSeenCount = finiteNumber(options.minSeenCount);
-  if (minRepostCount !== undefined) query = query.gte("repost_count", minRepostCount);
-  if (minSeenCount !== undefined) query = query.gte("seen_count", minSeenCount);
-
-  const cutoff = datePostedCutoff(options.datePosted, options);
-  if (cutoff) query = query.gte("posted_at", cutoff);
-
-  const search = sanitizeSearchTerm(options.query);
-  if (search) {
-    query = query.or(`job_title.ilike.%${search}%,company.ilike.%${search}%`);
-  }
-
-  return query;
-}
-
-function applyJobSort(query: any, kind: JobListKind, options: InternalJobListOptions) {
-  const requestedSort = options.sortBy;
-  const sortBy = requestedSort && JOB_SORT_FIELDS[kind].includes(requestedSort)
-    ? requestedSort
-    : DEFAULT_SORT[kind];
-  const sortOrder: SortOrder = options.sortOrder === "asc" ? "asc" : "desc";
-  const orderOptions: { ascending: boolean; nullsFirst?: boolean } = {
-    ascending: sortOrder === "asc",
-  };
-  if (sortBy === "salary_min") orderOptions.nullsFirst = false;
-
-  return query
-    .order(sortBy, orderOptions)
-    .order("job_id", { ascending: true });
-}
-
-async function getJobRows(kind: JobListKind, options: InternalJobListOptions): Promise<Job[]> {
-  const supabase = await supabaseClientFactory();
-  const createQuery = () =>
-    applyJobSort(
-      applyJobPredicates(
-        supabase.from("jobs").select(
-          "*, customized_resumes!jobs_customized_resume_id_fkey(resume_link)",
-        ),
-        kind,
-        options,
-      ),
-      kind,
-      options,
-    );
-  const range = pageRange(options);
-  if (range) {
-    const response = await createQuery().range(range.from, range.to);
-    return ((await handleResponse(response)) ?? []) as Job[];
-  }
-
-  const jobs: Job[] = [];
+  // "All" must truly mean all matching keywords; fetch in batches to avoid silent truncation.
   const batchSize = 1000;
-  for (let from = 0; ; from += batchSize) {
-    const response = await createQuery().range(from, from + batchSize - 1);
-    const batch = ((await handleResponse(response)) ?? []) as Job[];
-    jobs.push(...batch);
-    if (batch.length < batchSize) break;
-  }
-  return jobs;
-}
-
-async function getJobCount(kind: JobListKind, options: InternalJobListOptions): Promise<number> {
-  const supabase = await supabaseClientFactory();
-  const query = applyJobPredicates(
-    supabase.from("jobs").select("*", { count: "exact", head: true }),
-    kind,
-    options,
-  );
-  const { count, error } = await query;
-  if (error) throw new Error(error.message || "Failed to get job count");
-  return count ?? 0;
-}
-
-function legacyListOptions(
-  optionsOrPage: JobListQueryOptions | number | undefined,
-  pageSize?: number,
-  provider?: string,
-  minScore?: number,
-  maxScore?: number,
-  interest?: LegacyInterest,
-  query?: string,
-): InternalJobListOptions {
-  if (typeof optionsOrPage === "object") return optionsOrPage;
-  return { page: optionsOrPage, pageSize, provider: provider as any, minScore, maxScore, interest, query };
-}
-
-function legacyCountOptions(
-  optionsOrProvider: JobListQueryOptions | string | undefined,
-  minScore?: number,
-  maxScore?: number,
-  interest?: LegacyInterest,
-  query?: string,
-): InternalJobListOptions {
-  if (typeof optionsOrProvider === "object") return optionsOrProvider;
-  return { provider: optionsOrProvider as any, minScore, maxScore, interest, query };
-}
-
-export async function getNewJobs(options?: JobListQueryOptions): Promise<Job[]>;
-export async function getNewJobs(
-  page?: number,
-  pageSize?: number,
-  provider?: LegacyProvider,
-  minScore?: number,
-  maxScore?: number,
-  interest?: LegacyInterest,
-  query?: string,
-): Promise<Job[]>;
-export async function getNewJobs(
-  optionsOrPage: JobListQueryOptions | number = {},
-  pageSize?: number,
-  provider?: string,
-  minScore?: number,
-  maxScore?: number,
-  interest?: LegacyInterest,
-  query?: string,
-): Promise<Job[]> {
-  return getJobRows("new", legacyListOptions(optionsOrPage, pageSize, provider, minScore, maxScore, interest, query));
-}
-
-export async function getAllActiveJobsCount(options?: JobListQueryOptions): Promise<number>;
-export async function getAllActiveJobsCount(
-  provider?: LegacyProvider,
-  minScore?: number,
-  maxScore?: number,
-  interest?: LegacyInterest,
-  query?: string,
-): Promise<number>;
-export async function getAllActiveJobsCount(
-  optionsOrProvider: JobListQueryOptions | string = {},
-  minScore?: number,
-  maxScore?: number,
-  interest?: LegacyInterest,
-  query?: string,
-): Promise<number> {
-  return getJobCount("new", legacyCountOptions(optionsOrProvider, minScore, maxScore, interest, query));
-}
-
-export async function getTopScoredJobs(options?: JobListQueryOptions): Promise<Job[]>;
-export async function getTopScoredJobs(
-  page?: number,
-  pageSize?: number,
-  provider?: LegacyProvider,
-  minScore?: number,
-  maxScore?: number,
-  interest?: LegacyInterest,
-  query?: string,
-): Promise<Job[]>;
-export async function getTopScoredJobs(
-  optionsOrPage: JobListQueryOptions | number = {},
-  pageSize?: number,
-  provider?: string,
-  minScore?: number,
-  maxScore?: number,
-  interest?: LegacyInterest,
-  query?: string,
-): Promise<Job[]> {
-  return getJobRows("top", legacyListOptions(optionsOrPage, pageSize, provider, minScore, maxScore, interest, query));
-}
-
-export async function getTopScoredJobsCount(options?: JobListQueryOptions): Promise<number>;
-export async function getTopScoredJobsCount(
-  provider?: LegacyProvider,
-  minScore?: number,
-  maxScore?: number,
-  interest?: LegacyInterest,
-  query?: string,
-): Promise<number>;
-export async function getTopScoredJobsCount(
-  optionsOrProvider: JobListQueryOptions | string = {},
-  minScore?: number,
-  maxScore?: number,
-  interest?: LegacyInterest,
-  query?: string,
-): Promise<number> {
-  return getJobCount("top", legacyCountOptions(optionsOrProvider, minScore, maxScore, interest, query));
-}
-
-function legacyAppliedOptions(
-  optionsOrPage: JobListQueryOptions | number | undefined,
-  pageSize?: number,
-  provider?: string,
-  query?: string,
-  applicationStatus?: string,
-  sortBy?: string,
-  sortOrder?: string,
-): InternalJobListOptions {
-  if (typeof optionsOrPage === "object") return optionsOrPage;
-  return {
-    page: optionsOrPage,
-    pageSize,
-    provider: provider as any,
-    query,
-    applicationStatus: applicationStatus as ApplicationStatus,
-    sortBy: sortBy as SortField,
-    sortOrder: sortOrder as SortOrder,
-  };
-}
-
-export async function getAppliedJobs(options?: JobListQueryOptions): Promise<Job[]>;
-export async function getAppliedJobs(
-  page?: number,
-  pageSize?: number,
-  provider?: LegacyProvider,
-  query?: string,
-  applicationStatus?: string,
-  sortBy?: string,
-  sortOrder?: string,
-): Promise<Job[]>;
-export async function getAppliedJobs(
-  optionsOrPage: JobListQueryOptions | number = {},
-  pageSize?: number,
-  provider?: string,
-  query?: string,
-  applicationStatus?: string,
-  sortBy?: string,
-  sortOrder?: string,
-): Promise<Job[]> {
-  return getJobRows("applied", legacyAppliedOptions(
-    optionsOrPage,
-    pageSize,
-    provider,
-    query,
-    applicationStatus,
-    sortBy,
-    sortOrder,
-  ));
-}
-
-export async function getAppliedJobsCount(options?: JobListQueryOptions): Promise<number>;
-export async function getAppliedJobsCount(
-  provider?: LegacyProvider,
-  query?: string,
-  applicationStatus?: string,
-): Promise<number>;
-export async function getAppliedJobsCount(
-  optionsOrProvider: JobListQueryOptions | string = {},
-  query?: string,
-  applicationStatus?: string,
-): Promise<number> {
-  const options = typeof optionsOrProvider === "object"
-    ? optionsOrProvider
-    : {
-      provider: optionsOrProvider as any,
-      query,
-      applicationStatus: applicationStatus as ApplicationStatus,
-    };
-  return getJobCount("applied", options);
-}
-
-function keywordFilterStatus(
-  value: KeywordInsightsQueryOptions["filterStatus"],
-): string {
-  if (value === "show_filtered" || value === "all") return "all";
-  if (value === "entry_level") return "entry_level";
-  if (value === "filtered") return "filtered";
-  return "unfiltered";
-}
-
-export async function getKeywordInsights(
-  options: KeywordInsightsQueryOptions = {},
-): Promise<KeywordInsightsResult> {
-  const supabase = await supabaseClientFactory();
-  const batchSize = 1000;
-  const keywords: KeywordInsight[] = [];
   let offset = 0;
   let totalCount: number | null = null;
+  const keywords: KeywordInsight[] = [];
 
-  while (totalCount === null || keywords.length < totalCount) {
-    const response = await supabase.rpc("get_filtered_keyword_insights", {
-      p_providers: arrayOption(options.providers, options.provider),
-      p_archetypes: arrayOption(options.archetypes, options.archetype, ["software_tpm"]),
-      p_levels: nonEmpty(options.levels),
-      p_filter_status: keywordFilterStatus(options.filterStatus),
-      p_companies: nonEmpty(options.companies),
-      p_job_titles: nonEmpty(options.jobTitles),
-      p_provinces: nonEmpty(options.provinces),
-      p_location_scopes: nonEmpty(options.locationScopes),
-      p_exclude_metros: nonEmpty(options.excludeMetros),
-      p_category: options.category && options.category !== "all" ? options.category : null,
-      p_min_count: Math.max(0, Math.trunc(finiteNumber(options.minCount) ?? 2)),
-      p_limit: batchSize,
-      p_offset: offset,
-    });
-    const rows = ((await handleResponse(response)) ?? []) as Array<KeywordInsight & {
-      total_count?: number | string | null;
-    }>;
+  while (true) {
+    const { from, to } = getNextKeywordInsightsRange(offset, batchSize);
+
+    let query;
 
     if (totalCount === null) {
-      const parsedTotal = Number(rows[0]?.total_count);
-      totalCount = Number.isFinite(parsedTotal) ? parsedTotal : rows.length;
+      query = supabase
+        .from("keyword_insights")
+        .select("keyword, category, archetype, count, last_updated", {
+          count: "exact",
+        })
+        .order("count", { ascending: false })
+        .order("keyword", { ascending: true })
+        .eq("archetype", archetype)
+        .gte("count", minCount);
+    } else {
+      query = supabase
+        .from("keyword_insights")
+        .select("keyword, category, archetype, count, last_updated")
+        .order("count", { ascending: false })
+        .order("keyword", { ascending: true })
+        .eq("archetype", archetype)
+        .gte("count", minCount);
     }
-    keywords.push(...rows.map(({ total_count: _totalCount, ...row }) => row));
-    if (!rows.length) break;
-    offset += rows.length;
+
+    query = provider ? query.eq("provider", provider) : query;
+
+    const response = await query.range(from, to);
+
+    const data = ((await handleResponse(response)) ?? []) as KeywordInsight[];
+
+    if (totalCount === null) {
+      totalCount = response.count ?? null;
+    }
+
+    keywords.push(...data);
+
+    if (
+      !shouldContinueKeywordInsightsFetch({
+        accumulatedCount: keywords.length,
+        batchCount: data.length,
+        batchSize,
+        totalCount,
+      })
+    ) {
+      break;
+    }
+
+    offset += batchSize;
   }
 
-  return { keywords, totalCount: totalCount ?? keywords.length };
+  return {
+    keywords,
+    totalCount: totalCount ?? keywords.length,
+  };
 }
 
-export async function getJobKeywordInsights(
-  jobId: string,
-): Promise<JobKeywordInsight[]> {
-  const supabase = await supabaseClientFactory();
-  const response = await supabase
-    .from("job_keyword_insights")
-    .select("job_id, keyword, category, analyzed_at, archetype, provider")
-    .eq("job_id", jobId)
-    .order("category", { ascending: true })
-    .order("keyword", { ascending: true });
-  return (((await handleResponse(response)) ?? []) as JobKeywordInsight[]);
-}
+export async function getTopScoredJobs(
+  page: number = 1, // Default to page 1
+  pageSize: number = 10, // Default page size
+  provider?: string, // Optional provider filter
+  minScore: number = 50, // Default minScore
+  maxScore: number = 100, // Default maxScore
+  isInterested?: boolean | null, // Optional interest filter (true, false, or null for 'not marked')
+  searchQuery?: string, // Optional search query
+): Promise<Job[]> {
+  const supabase = await createSupabaseServerClient();
 
-export type JobKeywordInsight = SharedJobKeywordInsight & {
-  job_id: string;
-  analyzed_at: string | null;
-};
+  const rpcParams: any = {
+    p_page_number: page,
+    p_page_size: pageSize,
+    p_provider: provider || null,
+    p_min_score: minScore,
+    p_max_score: maxScore,
+    p_search_query: searchQuery || null, // Add search query to RPC params
+  };
 
-export type JobFilterSuggestionField = "company" | "jobTitle";
-
-export async function getJobFilterSuggestions(
-  field: JobFilterSuggestionField,
-  query = "",
-  limit = 20,
-): Promise<string[]> {
-  if (field !== "company" && field !== "jobTitle") {
-    throw new Error("Unsupported suggestion field");
+  // Determine the string value for p_is_interested_option
+  let interestOption: string | undefined = undefined;
+  if (isInterested === true) {
+    interestOption = "true";
+  } else if (isInterested === false) {
+    interestOption = "false";
+  } else if (isInterested === null) {
+    interestOption = "null_value";
   }
-  const normalizedQuery = query.trim().slice(0, 100);
-  const normalizedLimit = Math.min(
-    Math.max(Math.trunc(finiteNumber(limit) ?? 5000), 1),
-    5000,
+  // If isInterested is undefined (meaning 'all'), interestOption remains undefined,
+  // and p_is_interested_option will not be added to rpcParams,
+  // so the RPC function will use its default 'all'.
+
+  if (interestOption !== undefined) {
+    rpcParams.p_is_interested_option = interestOption;
+  }
+
+  const response = await supabase.rpc(
+    "get_top_scored_jobs_custom_sort",
+    rpcParams,
   );
-  const supabase = await supabaseClientFactory();
-  const response = await supabase.rpc("search_job_filter_suggestions", {
-    p_field: field,
-    p_query: normalizedQuery,
-    p_limit: normalizedLimit,
-  });
-  const rows = ((await handleResponse(response)) ?? []) as Array<{ value: string | null }>;
-  return Array.from(new Set(rows.map((row) => row.value).filter((value): value is string => Boolean(value))))
-    .slice(0, normalizedLimit);
+
+  // The existing handleResponse function can be used if it expects { data, error }
+  // and data is the array of jobs.
+  // If rpc() returns data directly in response.data without an outer data property, adjust accordingly.
+  // Assuming supabase.rpc returns { data: Job[], error: PostgrestError | null }
+  const data = await handleResponse(response);
+  return data ?? []; // Return empty array if data is null/undefined
 }
 
-export function getDistinctCompanies(query = "", limit = 5000): Promise<string[]> {
-  return getJobFilterSuggestions("company", query, limit);
+// New function to get the count of top scored jobs
+// Updated to support provider, score, interest, and search filtering
+export async function getTopScoredJobsCount(
+  provider?: string,
+  minScore: number = 50, // Default minScore
+  maxScore: number = 100, // Default maxScore
+  isInterested?: boolean | null, // Optional interest filter
+  searchQuery?: string, // Optional search query
+): Promise<number> {
+  const supabase = await createSupabaseServerClient();
+
+  let query = supabase
+    .from("jobs")
+    .select("*", { count: "exact", head: true }) // Select count only
+    .eq("is_active", true)
+    .eq("status", "new")
+    .eq("job_state", "new")
+    .gte("resume_score", minScore) // Apply minScore filter
+    .lte("resume_score", maxScore); // Apply maxScore filter
+
+  // Add provider filter if specified
+  if (provider) {
+    query = query.eq("provider", provider);
+  }
+
+  // Add interest filter if specified
+  // undefined means 'all' (no filter on is_interested)
+  // null means 'is_interested IS NULL' (not marked)
+  // true means 'is_interested IS TRUE'
+  // false means 'is_interested IS FALSE'
+  if (isInterested === true) {
+    query = query.is("is_interested", true);
+  } else if (isInterested === false) {
+    query = query.is("is_interested", false);
+  } else if (isInterested === null) {
+    query = query.is("is_interested", null);
+  }
+  // If isInterested is undefined, no additional filter is applied for interest status.
+
+  // Add search query filter if specified
+  if (searchQuery) {
+    // Assuming you want to search in 'job_title' and 'company' fields
+    // Adjust the fields and logic as per your database schema and search requirements
+    query = query.or(
+      `job_title.ilike.%${searchQuery}%,company.ilike.%${searchQuery}%`,
+    ); // Changed 'role' to 'job_title'
+  }
+
+  const { count, error } = await query;
+
+  if (error) {
+    console.error("Supabase count error:", error.message || "Unknown error"); // Added a fallback for empty error message
+    throw new Error(error.message || "Failed to get job count"); // Added a fallback for empty error message
+  }
+
+  return count ?? 0; // Return the count or 0 if null
 }
 
-export function getDistinctJobTitles(query = "", limit = 5000): Promise<string[]> {
-  return getJobFilterSuggestions("jobTitle", query, limit);
+export async function getNewJobs(
+  page: number = 1,
+  pageSize: number = 10,
+  provider?: string, // Optional provider filter
+  minScore: number = 0, // Default minScore (assuming 0 as a base for 'new' jobs if not specified)
+  maxScore: number = 100, // Default maxScore
+  isInterested?: boolean | null, // Optional interest filter (true, false, or null for 'not marked')
+  searchQuery?: string, // Optional search query
+): Promise<Job[]> {
+  const supabase = await createSupabaseServerClient();
+
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  let query = supabase
+    .from("jobs")
+    .select("*")
+    .eq("is_active", true)
+    .eq("status", "new") // Filter by status
+    .eq("job_state", "new")
+    .gte("resume_score", minScore) // Apply minScore filter
+    .lte("resume_score", maxScore); // Apply maxScore filter
+
+  // Add provider filter if specified
+  if (provider) {
+    query = query.eq("provider", provider);
+  }
+
+  // Add interest filter if specified
+  if (isInterested === true) {
+    query = query.is("is_interested", true);
+  } else if (isInterested === false) {
+    query = query.is("is_interested", false);
+  } else if (isInterested === null) {
+    query = query.is("is_interested", null);
+  } else {
+    // Default behavior from original function: is_interested is null or true
+    query = query.or("is_interested.is.null,is_interested.eq.true");
+  }
+
+  // Add search query filter if specified
+  if (searchQuery) {
+    query = query.or(
+      `job_title.ilike.%${searchQuery}%,company.ilike.%${searchQuery}%`,
+    );
+  }
+
+  query = query.order("scraped_at", { ascending: false }).range(from, to); // Added pagination
+
+  const response = await query;
+  return handleResponse(response);
+}
+
+// Function to get the count of all active jobs with filters
+export async function getAllActiveJobsCount(
+  provider?: string, // Optional provider filter
+  minScore: number = 0, // Default minScore (assuming 0 as a base if not specified)
+  maxScore: number = 100, // Default maxScore
+  isInterested?: boolean | null, // Optional interest filter
+  searchQuery?: string, // Optional search query
+): Promise<number> {
+  const supabase = await createSupabaseServerClient();
+
+  let query = supabase
+    .from("jobs")
+    .select("*", { count: "exact", head: true }) // Select count only
+    .eq("is_active", true)
+    .eq("status", "new")
+    .eq("job_state", "new")
+    .gte("resume_score", minScore) // Apply minScore filter
+    .lte("resume_score", maxScore); // Apply maxScore filter
+
+  // Add provider filter if specified
+  if (provider) {
+    query = query.eq("provider", provider);
+  }
+
+  // Add interest filter if specified
+  if (isInterested === true) {
+    query = query.is("is_interested", true);
+  } else if (isInterested === false) {
+    query = query.is("is_interested", false);
+  } else if (isInterested === null) {
+    query = query.is("is_interested", null);
+  }
+  // If isInterested is undefined, no additional filter is applied for interest status.
+
+  // Add search query filter if specified
+  if (searchQuery) {
+    query = query.or(
+      `job_title.ilike.%${searchQuery}%,company.ilike.%${searchQuery}%`,
+    );
+  }
+
+  const { count, error } = await query;
+
+  if (error) {
+    console.error("Supabase count error (all active jobs):", error);
+    throw new Error(error.message); // Or return 0, depending on desired behavior
+  }
+
+  return count ?? 0; // Return the count or 0 if null
+}
+
+export async function getAppliedJobs(
+  page: number = 1,
+  pageSize: number = 10,
+  provider?: string,
+  searchQuery?: string,
+  applicationStatus?: string,
+  sortBy?: string, // New: sortBy parameter
+  sortOrder?: string, // New: sortOrder parameter (e.g., 'asc' or 'desc')
+): Promise<Job[]> {
+  const supabase = await createSupabaseServerClient();
+
+  const rpcParams: any = {
+    p_page_number: page,
+    p_page_size: pageSize,
+    p_provider: provider || null,
+    p_search_query: searchQuery || null,
+    p_application_status: applicationStatus || null,
+    p_sort_by: sortBy || null, // New: Pass sortBy to RPC params
+    p_sort_order: sortOrder || "desc", // New: Pass sortOrder, default to 'desc'
+  };
+
+  const response = await supabase.rpc("get_applied_jobs_sorted", rpcParams);
+
+  const data = await handleResponse(response);
+  return data ?? [];
+}
+
+// Function to get the count of applied jobs
+export async function getAppliedJobsCount(
+  provider?: string,
+  searchQuery?: string,
+  applicationStatus?: string, // Add new applicationStatus parameter
+): Promise<number> {
+  const supabase = await createSupabaseServerClient();
+  // IMPORTANT: Ensure these statuses match those in your RPC and database
+  // Suggestion: Standardize to ['applied', 'interviewing', 'offered'] if 'offered' is correct
+  const appliedStatuses = ["applied", "interviewing", "offer"];
+
+  let query = supabase
+    .from("jobs")
+    .select("*", { count: "exact", head: true }) // Select count only
+    .eq("is_active", true)
+    // .in("status", appliedStatuses) // Filter by relevant statuses - replaced by specific status or all applied
+    .eq("job_state", "new");
+
+  // Add application status filter if specified
+  if (applicationStatus) {
+    query = query.eq("status", applicationStatus);
+  } else {
+    // If no specific status, filter by all relevant applied statuses
+    query = query.in("status", appliedStatuses);
+  }
+
+  // Add provider filter if specified
+  if (provider) {
+    query = query.eq("provider", provider);
+  }
+
+  // Add search query filter if specified
+  if (searchQuery) {
+    query = query.or(
+      `job_title.ilike.%${searchQuery}%,company.ilike.%${searchQuery}%`,
+    );
+  }
+
+  const { count, error } = await query;
+
+  if (error) {
+    console.error("Supabase count error (applied jobs):", error);
+    throw new Error(error.message); // Or return 0, depending on desired behavior
+  }
+
+  return count ?? 0; // Return the count or 0 if null
 }
 
 /**
@@ -683,7 +479,7 @@ export async function getJobById(job_id: string): Promise<Job | null> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("jobs")
-    .select("*, customized_resumes!jobs_customized_resume_id_fkey(resume_link)")
+    .select("*, customized_resumes!jobs_customized_resume_id_fkey(resume_link)") // Fetches all job fields and the resume_link from the related customized_resume
     .eq("job_id", job_id)
     .single(); // Use single() if you expect only one or zero results
 
@@ -701,10 +497,7 @@ export async function getJobById(job_id: string): Promise<Job | null> {
 // New function to update a job by its ID
 export async function updateJobById(
   job_id: string,
-  updates: Pick<
-    Partial<Job>,
-    "application_date" | "is_interested" | "notes" | "status"
-  >,
+  updates: Partial<Omit<Job, "job_id">>,
 ): Promise<Job | null> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
