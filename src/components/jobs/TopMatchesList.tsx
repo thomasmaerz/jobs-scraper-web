@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react"; // Added useEffect
+import { useState, useEffect, useRef } from "react"; // Added useEffect
 import Link from "next/link";
 import PaginationControls from "./PaginationControls";
 import {
@@ -69,6 +69,7 @@ export default function TopMatchesList({
   const [selectedJob, setSelectedJob] = useState<Job | null>(null); // Initialize as null
   const [isUpdating, setIsUpdating] = useState(false);
   const [isUpdatingInterest, setIsUpdatingInterest] = useState(false);
+  const jobCardRefs = useRef<Array<HTMLLIElement | null>>([]);
   const router = useRouter();
   const searchParams = useSearchParams(); // Get searchParams
 
@@ -129,6 +130,22 @@ export default function TopMatchesList({
     router.replace(`${window.location.pathname}?${params.toString()}`, {
       scroll: false,
     });
+  };
+
+  const handleJobCardKeyDown = (
+    event: React.KeyboardEvent<HTMLLIElement>,
+    index: number,
+  ) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+
+    const nextIndex = event.key === "ArrowDown" ? index + 1 : index - 1;
+    const nextJob = jobs[nextIndex];
+    if (!nextJob) return;
+
+    event.preventDefault();
+    handleJobSelect(nextJob);
+    jobCardRefs.current[nextIndex]?.focus();
+    jobCardRefs.current[nextIndex]?.scrollIntoView({ block: "nearest" });
   };
 
   const handleMarkAsApplied = async () => {
@@ -271,7 +288,7 @@ export default function TopMatchesList({
   const selectedJobUrl = selectedJob ? getExternalJobUrl(selectedJob) : null;
 
   return (
-    <div className="flex flex-col gap-6 rounded-lg bg-gray-50 shadow-sm md:min-h-0 md:flex-1 md:flex-row md:overflow-hidden">
+    <div className="flex flex-col gap-6 rounded-lg bg-gray-50 shadow-sm md:min-h-0 md:flex-1 md:items-start md:flex-row md:overflow-visible">
       {/* Left Column: Job List */}
       <div className="w-full md:w-1/3 bg-white border-r border-gray-100 flex flex-col">
         <div className="p-4 border-b border-gray-100">
@@ -284,15 +301,22 @@ export default function TopMatchesList({
         {jobs.length > 0 ? (
           <>
             <ul className="divide-y divide-gray-100 overflow-y-auto flex-grow">
-              {jobs.map((job) => (
+              {jobs.map((job, index) => (
                 <li
                   key={job.job_id}
-                  onClick={() => handleJobSelect(job)}
+                  ref={(element) => { jobCardRefs.current[index] = element; }}
+                  tabIndex={0}
+                  aria-current={selectedJob?.job_id === job.job_id ? "true" : undefined}
+                  onClick={(event) => {
+                    event.currentTarget.focus();
+                    handleJobSelect(job);
+                  }}
+                  onKeyDown={(event) => handleJobCardKeyDown(event, index)}
                   className={`p-4 cursor-pointer transition-all duration-200 hover:bg-gray-50 ${
                     selectedJob?.job_id === job.job_id
                       ? "bg-indigo-50 border-l-4 border-indigo-500"
                       : "border-l-4 border-transparent"
-                  }`}
+                  } focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500`}
                 >
                   <div className="flex justify-between items-start">
                     <div className="flex-1 min-w-0">
@@ -402,7 +426,7 @@ export default function TopMatchesList({
       </div>
 
       {/* Right Column: Job Details */}
-      <div className="w-full md:w-2/3 bg-white overflow-y-auto">
+      <div className="w-full bg-white md:sticky md:top-20 md:max-h-[calc(100vh-6rem)] md:w-2/3 md:self-start md:overflow-y-auto">
         {selectedJob ? (
           <div className="h-full flex flex-col">
             {/* Header section with fixed position */}
