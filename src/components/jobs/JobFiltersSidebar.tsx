@@ -394,23 +394,12 @@ export default function JobFiltersSidebar({
           )}
 
           {supportedFilters.includes("repostCount") && (
-            <FilterSection label="Additional listing IDs">
+            <FilterSection label="Repost count">
               <NumericDraft
-                label="Minimum additional listing IDs"
+                label="Minimum repost count"
                 value={filters.minRepostCount}
                 minimum={0}
                 onCommit={(value) => updateScalar("minRepostCount", value)}
-              />
-            </FilterSection>
-          )}
-
-          {supportedFilters.includes("seenCount") && (
-            <FilterSection label="Listing ID count">
-              <NumericDraft
-                label="Minimum listing ID count"
-                value={filters.minSeenCount}
-                minimum={0}
-                onCommit={(value) => updateScalar("minSeenCount", value)}
               />
             </FilterSection>
           )}

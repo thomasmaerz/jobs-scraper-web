@@ -24,7 +24,7 @@ import {
   formatArchetype,
   formatLevel,
   hasSpecifiedLevel,
-  formatSeenCount,
+  formatRepostCount,
   getExternalJobUrl,
 } from "@/lib/jobs/formatters";
 
@@ -241,9 +241,9 @@ export default function AppliedJobsList({
                           {formatArchetype(job.archetype)}
                         </span>
                       )}
-                      {formatSeenCount(job.seen_count) && (
+                      {formatRepostCount(job.repost_count) && (
                         <span className="text-xs text-gray-500">
-                          {formatSeenCount(job.seen_count)}
+                          {formatRepostCount(job.repost_count)}
                         </span>
                       )}
                       {job.is_filtered && job.filter_reason && (

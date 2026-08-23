@@ -3,7 +3,7 @@ import test from "node:test";
 
 import type { Job, ListingInstance } from "../../types.ts";
 import {
-  getListingVariantSummary,
+  getListingRecruiters,
   getSortedListingInstances,
   hasListingVariants,
 } from "./repost.ts";
@@ -60,13 +60,46 @@ function job(overrides: Partial<Job> = {}): Job {
   };
 }
 
-test("listing variants are labeled as IDs rather than confirmed reposts", () => {
+test("listing variants are detected without inferring chronology", () => {
   assert.equal(hasListingVariants(job()), false);
-  assert.equal(getListingVariantSummary(job()), null);
-  assert.equal(
-    getListingVariantSummary(job({ seen_count: 8, repost_count: 7 })),
-    "8 listing IDs",
-  );
+  assert.equal(hasListingVariants(job({ seen_count: 8, repost_count: 7 })), true);
+});
+
+test("listing recruiters are deduplicated and retain profile links", () => {
+  const recruiters = getListingRecruiters(job({
+    recruiter_name: "Seerat Mahajan",
+    recruiter_identifier: "seerat",
+    recruiter_profile_url: "https://example.com/seerat",
+    listing_instances: [
+      {
+        job_id: "one",
+        scraped_at: "2026-08-20T10:00:00Z",
+        posted_at: null,
+        posted_relative_text: null,
+        applicant_count: null,
+        salary_text: null,
+        recruiter_name: "Seerat Mahajan",
+        recruiter_identifier: "seerat",
+        recruiter_profile_url: "https://example.com/seerat",
+      },
+      {
+        job_id: "two",
+        scraped_at: "2026-08-21T10:00:00Z",
+        posted_at: null,
+        posted_relative_text: null,
+        applicant_count: null,
+        salary_text: null,
+        recruiter_name: "Vijay Kumar",
+        recruiter_identifier: "vijay",
+        recruiter_profile_url: "https://example.com/vijay",
+      },
+    ],
+  }));
+
+  assert.deepEqual(recruiters, [
+    { name: "Seerat Mahajan", profileUrl: "https://example.com/seerat" },
+    { name: "Vijay Kumar", profileUrl: "https://example.com/vijay" },
+  ]);
 });
 
 test("listing history retains location and sorts newest scrape first", () => {

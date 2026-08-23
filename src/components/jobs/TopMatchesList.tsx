@@ -22,13 +22,14 @@ import {
   formatArchetype,
   formatLevel,
   hasSpecifiedLevel,
+  formatPostedRelative,
+  formatRepostCount,
   formatSalary,
-  formatSeenCount,
   getExternalJobUrl,
   sanitizeExternalUrl,
 } from "@/lib/jobs/formatters";
 import {
-  getListingVariantSummary,
+  getListingRecruiters,
   getSortedListingInstances,
   hasListingVariants,
 } from "@/lib/jobs/repost";
@@ -272,16 +273,13 @@ export default function TopMatchesList({
   );
 
   const selectedJobSalary = selectedJob ? formatSalary(selectedJob) : null;
-  const selectedJobListingSummary = selectedJob
-    ? getListingVariantSummary(selectedJob)
-    : null;
   const selectedJobListingHistory = selectedJob
     ? getSortedListingInstances(selectedJob)
     : [];
+  const selectedJobRecruiters = selectedJob
+    ? getListingRecruiters(selectedJob)
+    : [];
   const selectedJobUrl = selectedJob ? getExternalJobUrl(selectedJob) : null;
-  const selectedRecruiterProfileUrl = selectedJob
-    ? sanitizeExternalUrl(selectedJob.recruiter_profile_url)
-    : null;
 
   return (
     <div className="flex flex-col gap-6 rounded-lg bg-gray-50 shadow-sm md:min-h-0 md:flex-1 md:flex-row md:overflow-hidden">
@@ -329,7 +327,9 @@ export default function TopMatchesList({
                         </span>
                       </div>
                       <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
-                        {job.posted_relative_text && <span>{job.posted_relative_text}</span>}
+                        {job.posted_relative_text && (
+                          <span>{formatPostedRelative(job.posted_relative_text)}</span>
+                        )}
                         {job.applicant_count != null && <span>{job.applicant_count} applicants</span>}
                         {formatSalary(job) && <span>{formatSalary(job)}</span>}
                       </div>
@@ -346,9 +346,9 @@ export default function TopMatchesList({
                             {formatArchetype(job.archetype)}
                           </span>
                         )}
-                        {formatSeenCount(job.seen_count) && (
+                        {formatRepostCount(job.repost_count) && (
                           <span className="text-xs text-gray-500">
-                            {formatSeenCount(job.seen_count)}
+                            {formatRepostCount(job.repost_count)}
                           </span>
                         )}
                         {job.is_filtered && job.filter_reason && (
@@ -443,32 +443,35 @@ export default function TopMatchesList({
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-sm text-gray-600">
                     {selectedJob.posted_relative_text && (
-                      <span>Listed {selectedJob.posted_relative_text}</span>
+                      <span>{formatPostedRelative(selectedJob.posted_relative_text)}</span>
                     )}
                     {selectedJob.applicant_count != null && (
                       <span>{selectedJob.applicant_count} applicants</span>
                     )}
                     {selectedJobSalary && <span>{selectedJobSalary}</span>}
-                    {selectedJob.recruiter_name && (
-                      <span>
-                        Recruiter:{" "}
-                        {selectedRecruiterProfileUrl ? (
-                          <a
-                            href={selectedRecruiterProfileUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-medium text-indigo-600 hover:text-indigo-800 hover:underline"
-                          >
-                            {selectedJob.recruiter_name}
-                          </a>
-                        ) : (
-                          selectedJob.recruiter_name
-                        )}
-                      </span>
-                    )}
-                    {selectedJobListingSummary && (
-                      <span className="text-amber-700 font-medium">
-                        {selectedJobListingSummary}
+                    {selectedJobRecruiters.length > 0 && (
+                      <span className="inline-flex flex-wrap gap-x-1">
+                        <span>{selectedJobRecruiters.length === 1 ? "Recruiter:" : "Recruiters:"}</span>
+                        {selectedJobRecruiters.map((recruiter, index) => {
+                          const profileUrl = sanitizeExternalUrl(recruiter.profileUrl);
+                          return (
+                            <span key={`${recruiter.name}-${index}`}>
+                              {index > 0 ? ", " : ""}
+                              {profileUrl ? (
+                                <a
+                                  href={profileUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-medium text-indigo-600 hover:text-indigo-800 hover:underline"
+                                >
+                                  {recruiter.name}
+                                </a>
+                              ) : (
+                                recruiter.name
+                              )}
+                            </span>
+                          );
+                        })}
                       </span>
                     )}
                   </div>
@@ -598,10 +601,12 @@ export default function TopMatchesList({
             </div>
 
             {hasListingVariants(selectedJob) && (
-              <div className="px-6 pt-4 space-y-4">
-                {hasListingVariants(selectedJob) && (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                    <h3 className="font-medium text-amber-900">Listing history</h3>
+              <div className="px-6 pt-4">
+                <details className="rounded-lg border border-amber-200 bg-amber-50">
+                  <summary className="cursor-pointer px-4 py-3 font-medium text-amber-900">
+                    Listing history ({selectedJobListingHistory.length})
+                  </summary>
+                  <div className="border-t border-amber-200 p-4">
                     <p className="mt-1 text-sm text-amber-800">
                       Distinct source listing IDs grouped as one role. These may be
                       simultaneous variants or crossposts, not chronological reposts.
@@ -615,7 +620,7 @@ export default function TopMatchesList({
                               : `Scraped ${formatListingDate(instance.scraped_at)}`}
                           </span>
                           {instance.posted_relative_text
-                            ? ` • listed ${instance.posted_relative_text} at scrape time`
+                            ? ` • ${formatPostedRelative(instance.posted_relative_text)}`
                             : ""}
                           {` • ID ${instance.job_id}`}
                           {instance.applicant_count != null
@@ -629,7 +634,7 @@ export default function TopMatchesList({
                       ))}
                     </ul>
                   </div>
-                )}
+                </details>
               </div>
             )}
 

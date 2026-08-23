@@ -289,6 +289,7 @@ function applyJobPredicates(
   const salaryMax = finiteNumber(options.salaryMax);
   if (options.hasSalary && salaryMin !== undefined) query = query.gte("salary_min", salaryMin);
   if (options.hasSalary && salaryMax !== undefined) query = query.lte("salary_min", salaryMax);
+  if (options.sortBy === "salary_min") query = query.lte("salary_min", 1_000_000);
 
   const minRepostCount = finiteNumber(options.minRepostCount);
   const minSeenCount = finiteNumber(options.minSeenCount);

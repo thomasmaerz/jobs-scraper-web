@@ -22,7 +22,6 @@ const SUPPORTED_FILTERS: readonly FilterId[] = [
   "hasSalary",
   "salaryRange",
   "repostCount",
-  "seenCount",
   "datePosted",
   "location",
 ];
@@ -31,7 +30,6 @@ const SUPPORTED_SORTS: readonly SortField[] = [
   "resume_score",
   "salary_min",
   "repost_count",
-  "seen_count",
 ];
 
 export default async function AllJobsPage({

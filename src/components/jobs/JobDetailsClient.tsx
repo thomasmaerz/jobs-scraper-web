@@ -24,17 +24,16 @@ import type {
 import {
   formatArchetype,
   formatLevel,
-  formatAdditionalListingCount,
   formatFilterReason,
   hasSpecifiedLevel,
+  formatPostedRelative,
   formatSalary,
-  formatSeenCount,
   getExternalJobUrl,
   sanitizeExternalUrl,
 } from "@/lib/jobs/formatters";
 import {
   getLatestListingInstance,
-  getListingVariantSummary,
+  getListingRecruiters,
   getSortedListingInstances,
 } from "@/lib/jobs/repost";
 
@@ -193,10 +192,9 @@ export default function JobDetailsClient({
 
   const jobUrl = getExternalJobUrl(job);
   const latestListing = getLatestListingInstance(job);
-  const listingVariantSummary = getListingVariantSummary(job);
   const salaryDisplay = formatSalary(job);
   const listingHistory = getSortedListingInstances(job);
-  const recruiterProfileUrl = sanitizeExternalUrl(job.recruiter_profile_url);
+  const listingRecruiters = getListingRecruiters(job);
 
   return (
     <div className="overflow-hidden rounded-lg bg-white shadow-lg">
@@ -239,32 +237,33 @@ export default function JobDetailsClient({
                 </span>
               )}
               {job.posted_relative_text && (
-                <span>Listed {job.posted_relative_text}</span>
+                <span>{formatPostedRelative(job.posted_relative_text)}</span>
               )}
               {job.applicant_count != null && (
                 <span>{job.applicant_count} applicants</span>
               )}
               {salaryDisplay && <span>{salaryDisplay}</span>}
-              {job.recruiter_name && (
-                <span>
-                  Recruiter:{" "}
-                  {recruiterProfileUrl ? (
-                    <a
-                      href={recruiterProfileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-medium text-indigo-600 hover:text-indigo-800 hover:underline"
-                    >
-                      {job.recruiter_name}
-                    </a>
-                  ) : (
-                    job.recruiter_name
-                  )}
-                </span>
-              )}
-              {listingVariantSummary && (
-                <span className="font-medium text-amber-700">
-                  {listingVariantSummary}
+              {listingRecruiters.length > 0 && (
+                <span className="inline-flex flex-wrap gap-x-1">
+                  <span>{listingRecruiters.length === 1 ? "Recruiter:" : "Recruiters:"}</span>
+                  {listingRecruiters.map((recruiter, index) => {
+                    const profileUrl = sanitizeExternalUrl(recruiter.profileUrl);
+                    return (
+                      <span key={`${recruiter.name}-${index}`}>
+                        {index > 0 ? ", " : ""}
+                        {profileUrl ? (
+                          <a
+                            href={profileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-indigo-600 hover:text-indigo-800 hover:underline"
+                          >
+                            {recruiter.name}
+                          </a>
+                        ) : recruiter.name}
+                      </span>
+                    );
+                  })}
                 </span>
               )}
             </div>
@@ -456,19 +455,10 @@ export default function JobDetailsClient({
                     value={formatDate(job.last_seen_at)}
                   />
                 )}
-                {job.seen_count != null && (
-                  <MetadataRow
-                    label="Listing ID Count"
-                    value={formatSeenCount(job.seen_count) || job.seen_count}
-                  />
-                )}
                 {job.repost_count != null && (
                   <MetadataRow
-                    label="Additional Listing IDs"
-                    value={
-                      formatAdditionalListingCount(job.repost_count) ||
-                      job.repost_count
-                    }
+                    label="Repost Count"
+                    value={job.repost_count}
                   />
                 )}
                 {job.original_job_id && (
@@ -482,16 +472,10 @@ export default function JobDetailsClient({
                 )}
               </dl>
 
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Listing Instances
-                </h3>
-                {listingVariantSummary && (
-                  <p className="mt-1 text-xs text-gray-500">
-                    Distinct source listing IDs grouped as one role. They may be
-                    simultaneous variants or crossposts, not confirmed reposts.
-                  </p>
-                )}
+              <details>
+                <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Listing History ({listingHistory.length})
+                </summary>
                 {listingHistory.length > 0 ? (
                   <div className="mt-2 overflow-x-auto">
                     <table className="w-full text-left text-xs text-gray-700">
@@ -518,7 +502,7 @@ export default function JobDetailsClient({
                                  : `Scraped ${formatDate(instance.scraped_at)}`}
                                {instance.posted_relative_text && (
                                  <span className="block text-gray-400">
-                                   Listed {instance.posted_relative_text} at scrape
+                                   {formatPostedRelative(instance.posted_relative_text)}
                                  </span>
                                )}
                            </td>
@@ -538,7 +522,7 @@ export default function JobDetailsClient({
                     No listing instances available.
                   </p>
                 )}
-              </div>
+              </details>
             </div>
           </details>
 

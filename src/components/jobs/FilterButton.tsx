@@ -27,7 +27,6 @@ const DEFAULT_FILTERS: readonly FilterId[] = [
   "hasSalary",
   "salaryRange",
   "repostCount",
-  "seenCount",
   "datePosted",
 ];
 

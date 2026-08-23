@@ -23,13 +23,36 @@ export function getSortedListingInstances(job: Job): ListingInstance[] {
   });
 }
 
-export function getListingVariantSummary(job: Job): string | null {
-  const listingCount = Math.max(
-    getListingInstances(job).length,
-    (job.repost_count || 0) + 1,
-  );
+export interface ListingRecruiter {
+  name: string;
+  profileUrl: string | null;
+}
 
-  if (listingCount <= 1) return null;
+export function getListingRecruiters(job: Job): ListingRecruiter[] {
+  const candidates = [
+    {
+      name: job.recruiter_name,
+      profileUrl: job.recruiter_profile_url,
+      identifier: job.recruiter_identifier,
+    },
+    ...getListingInstances(job).map((instance) => ({
+      name: instance.recruiter_name,
+      profileUrl: instance.recruiter_profile_url,
+      identifier: instance.recruiter_identifier,
+    })),
+  ];
+  const recruiters = new Map<string, ListingRecruiter>();
 
-  return `${listingCount} listing IDs`;
+  for (const candidate of candidates) {
+    if (!candidate.name) continue;
+    const key = candidate.identifier || candidate.profileUrl || candidate.name.toLowerCase();
+    if (!recruiters.has(key)) {
+      recruiters.set(key, {
+        name: candidate.name,
+        profileUrl: candidate.profileUrl,
+      });
+    }
+  }
+
+  return [...recruiters.values()];
 }

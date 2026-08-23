@@ -283,6 +283,27 @@ test("sort fields and orders are allowlisted per job list", async () => {
   }
 });
 
+test("salary sorting excludes implausible parser outliers", async () => {
+  const options = {
+    sortBy: "salary_min",
+    sortOrder: "desc",
+  } as const;
+  const calls = await rowCalls(getAllJobs, options);
+  const countMock = createQueryClient({ count: 1 });
+  __setSupabaseClientFactoryForTests(async () => countMock.client);
+  await getAllJobsCount(options);
+
+  assert.ok(hasCall(calls, "lte", "salary_min", 1_000_000));
+  assert.ok(hasCall(countMock.calls, "lte", "salary_min", 1_000_000));
+  assert.deepEqual(calls.filter((call) => call.method === "order"), [
+    {
+      method: "order",
+      args: ["salary_min", { ascending: false, nullsFirst: false }],
+    },
+    { method: "order", args: ["job_id", { ascending: true }] },
+  ]);
+});
+
 test("pagination supports 10, 25, 100, and batched all results", async () => {
   for (const pageSize of [10, 25, 100] as const) {
     const calls = await rowCalls(getNewJobs, { page: 2, pageSize });

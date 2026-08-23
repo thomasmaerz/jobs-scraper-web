@@ -36,8 +36,7 @@ const LABELS: Record<string, (value: string) => string> = {
   hasSalary: () => "Has salary",
   salaryMin: (value) => `Salary at least ${value}`,
   salaryMax: (value) => `Salary at most ${value}`,
-  minRepostCount: (value) => `Additional listing IDs: at least ${value}`,
-  minSeenCount: (value) => `Listing IDs: at least ${value}`,
+  minRepostCount: (value) => `Repost count: at least ${value}`,
   datePosted: (value) =>
     value === "24h" ? "Last 24 hours" : value === "7d" ? "Last week" : "Last month",
   applicationStatus: (value) =>

@@ -21,7 +21,6 @@ const SUPPORTED_FILTERS: readonly FilterId[] = [
   "hasSalary",
   "salaryRange",
   "repostCount",
-  "seenCount",
   "datePosted",
   "location",
 ];
@@ -31,7 +30,6 @@ const SUPPORTED_SORTS: readonly SortField[] = [
   "posted_at",
   "salary_min",
   "repost_count",
-  "seen_count",
 ];
 
 export default async function AppliedJobsPage({

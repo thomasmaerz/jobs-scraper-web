@@ -57,6 +57,14 @@ export function formatSalary(job: Job): string | null {
   return null;
 }
 
+export function formatPostedRelative(
+  relativeText: string | null | undefined,
+): string {
+  if (!relativeText) return "";
+  const elapsed = relativeText.trim().replace(/\s+ago$/i, "");
+  return `Listed ${elapsed} before scrape`;
+}
+
 export function formatLevel(level: string | null | undefined): string {
   if (!level) return "";
 
@@ -97,11 +105,6 @@ export function formatArchetype(archetype: string | null | undefined): string {
   return archetype.replaceAll("_", " ");
 }
 
-export function formatSeenCount(count: number | null | undefined): string {
-  if (count == null || count <= 0) return "";
-  return count === 1 ? "1 listing ID" : `${count} listing IDs`;
-}
-
 export function formatFilterReason(
   reason: string | null | undefined,
 ): string {
@@ -112,11 +115,11 @@ export function formatFilterReason(
   let label: string;
 
   if (normalized.includes("account manager")) {
-    label = "account management role";
+    label = "account management";
   } else if (normalized.includes("customer success")) {
-    label = "customer success role";
+    label = "customer success";
   } else if (normalized.includes("clinical")) {
-    label = "clinical role";
+    label = "clinical";
   } else if (normalized.includes("jobgether")) {
     label = "job aggregator listing";
   } else if (
@@ -138,11 +141,11 @@ export function formatFilterReason(
       "ici",
     ].some((term) => normalized.includes(term))
   ) {
-    label = "construction-related role";
+    label = "construction";
   } else if (source === "title_entry_level") {
-    label = "entry-level title";
+    label = "entry-level";
   } else if (source === "title") {
-    label = "title matched an exclusion rule";
+    label = "matched an exclusion rule";
   } else if (source === "company") {
     label = "company matched an exclusion rule";
   } else {
@@ -152,9 +155,9 @@ export function formatFilterReason(
   return `Filtered: ${label}`;
 }
 
-export function formatAdditionalListingCount(
+export function formatRepostCount(
   count: number | null | undefined,
 ): string {
   if (count == null || count <= 0) return "";
-  return count === 1 ? "1 additional listing ID" : `${count} additional listing IDs`;
+  return `Repost count: ${count}`;
 }

@@ -4,10 +4,10 @@ import test from "node:test";
 import {
   formatFilterReason,
   formatLevel,
-  formatAdditionalListingCount,
+  formatPostedRelative,
+  formatRepostCount,
   formatArchetype,
   hasSpecifiedLevel,
-  formatSeenCount,
 } from "./formatters.ts";
 
 test("formatLevel supports exact database values", () => {
@@ -43,29 +43,32 @@ test("formatLevel supports common canonical aliases and preserves unknown values
   assert.equal(formatLevel(null), "");
 });
 
-test("listing count helpers suppress empty values", () => {
-  assert.equal(formatSeenCount(1), "1 listing ID");
-  assert.equal(formatSeenCount(3), "3 listing IDs");
-  assert.equal(formatSeenCount(0), "");
-  assert.equal(formatAdditionalListingCount(1), "1 additional listing ID");
-  assert.equal(formatAdditionalListingCount(2), "2 additional listing IDs");
-  assert.equal(formatAdditionalListingCount(0), "");
+test("repost count helper suppresses empty values", () => {
+  assert.equal(formatRepostCount(1), "Repost count: 1");
+  assert.equal(formatRepostCount(2), "Repost count: 2");
+  assert.equal(formatRepostCount(0), "");
+});
+
+test("relative posting time is framed against scrape time", () => {
+  assert.equal(formatPostedRelative("19 hours ago"), "Listed 19 hours before scrape");
+  assert.equal(formatPostedRelative("2 days ago"), "Listed 2 days before scrape");
+  assert.equal(formatPostedRelative(null), "");
 });
 
 test("filter reasons describe exclusions without exposing raw regex", () => {
   assert.equal(
     formatFilterReason("title:\\baccount manager\\b"),
-    "Filtered: account management role",
+    "Filtered: account management",
   );
   assert.equal(
     formatFilterReason(
       "desc:(?s)\\bsubcontractor.{0,3000}\\b(?:general contractor|construction management)",
     ),
-    "Filtered: construction-related role",
+    "Filtered: construction",
   );
   assert.equal(
     formatFilterReason("title_entry_level:\\bcoordinator\\b"),
-    "Filtered: entry-level title",
+    "Filtered: entry-level",
   );
   assert.equal(
     formatFilterReason("desc:an unknown internal expression"),
