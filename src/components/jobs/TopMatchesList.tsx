@@ -15,6 +15,7 @@ import {
   Link as SocialLink,
 } from "lucide-react";
 import MarkdownRenderer from "./MarkdownRenderer";
+import ListingHistoryPanel from "./ListingHistoryPanel";
 import { Job } from "@/types";
 import { useRouter, useSearchParams } from "next/navigation"; // Added useSearchParams
 import {
@@ -30,7 +31,6 @@ import {
 } from "@/lib/jobs/formatters";
 import {
   getListingRecruiters,
-  getSortedListingInstances,
   hasListingVariants,
 } from "@/lib/jobs/repost";
 
@@ -57,14 +57,6 @@ function getLevelBadgeColor(level: string | null): string {
     default:
       return "bg-gray-100 text-gray-700";
   }
-}
-
-function formatListingDate(value: string): string {
-  return new Date(value).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
 }
 
 export default function TopMatchesList({
@@ -273,9 +265,6 @@ export default function TopMatchesList({
   );
 
   const selectedJobSalary = selectedJob ? formatSalary(selectedJob) : null;
-  const selectedJobListingHistory = selectedJob
-    ? getSortedListingInstances(selectedJob)
-    : [];
   const selectedJobRecruiters = selectedJob
     ? getListingRecruiters(selectedJob)
     : [];
@@ -602,38 +591,11 @@ export default function TopMatchesList({
 
             {hasListingVariants(selectedJob) && (
               <div className="px-6 pt-4">
-                <details className="rounded-lg border border-amber-200 bg-amber-50">
-                  <summary className="cursor-pointer px-4 py-3 font-medium text-amber-900">
-                    Listing history ({selectedJobListingHistory.length})
+                <details>
+                  <summary className="cursor-pointer rounded-lg border border-slate-200 bg-white px-4 py-3 font-medium text-slate-900 shadow-sm hover:bg-slate-50">
+                    Listing history and posting waves
                   </summary>
-                  <div className="border-t border-amber-200 p-4">
-                    <p className="mt-1 text-sm text-amber-800">
-                      Distinct source listing IDs grouped as one role. These may be
-                      simultaneous variants or crossposts, not chronological reposts.
-                    </p>
-                    <ul className="mt-3 space-y-2 text-sm text-amber-900">
-                      {selectedJobListingHistory.map((instance) => (
-                        <li key={`${instance.job_id}-${instance.scraped_at}`}>
-                          <span className="font-medium">
-                            {instance.posted_at
-                              ? formatListingDate(instance.posted_at)
-                              : `Scraped ${formatListingDate(instance.scraped_at)}`}
-                          </span>
-                          {instance.posted_relative_text
-                            ? ` • ${formatPostedRelative(instance.posted_relative_text)}`
-                            : ""}
-                          {` • ID ${instance.job_id}`}
-                          {instance.applicant_count != null
-                            ? ` • ${instance.applicant_count} applicants`
-                            : ""}
-                          {instance.recruiter_name
-                            ? ` • ${instance.recruiter_name}`
-                            : ""}
-                          {` • ${instance.location || "location not recorded"}`}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                  <div className="mt-3"><ListingHistoryPanel job={selectedJob} /></div>
                 </details>
               </div>
             )}

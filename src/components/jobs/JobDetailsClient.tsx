@@ -16,6 +16,7 @@ import {
   ThumbsUp,
 } from "lucide-react";
 import MarkdownRenderer from "./MarkdownRenderer";
+import ListingHistoryPanel from "./ListingHistoryPanel";
 import type {
   Job,
   JobKeywordInsight,
@@ -32,9 +33,7 @@ import {
   sanitizeExternalUrl,
 } from "@/lib/jobs/formatters";
 import {
-  getLatestListingInstance,
   getListingRecruiters,
-  getSortedListingInstances,
 } from "@/lib/jobs/repost";
 
 interface JobDetailsClientProps {
@@ -191,9 +190,7 @@ export default function JobDetailsClient({
   };
 
   const jobUrl = getExternalJobUrl(job);
-  const latestListing = getLatestListingInstance(job);
   const salaryDisplay = formatSalary(job);
-  const listingHistory = getSortedListingInstances(job);
   const listingRecruiters = getListingRecruiters(job);
 
   return (
@@ -461,6 +458,12 @@ export default function JobDetailsClient({
                     value={job.repost_count}
                   />
                 )}
+                {job.posting_wave_count != null && (
+                  <MetadataRow label="Posting Waves" value={job.posting_wave_count} />
+                )}
+                {job.seen_count != null && (
+                  <MetadataRow label="Source Listing IDs" value={job.seen_count} />
+                )}
                 {job.original_job_id && (
                   <MetadataRow
                     label="Original Job ID"
@@ -472,57 +475,9 @@ export default function JobDetailsClient({
                 )}
               </dl>
 
-              <details>
-                <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Listing History ({listingHistory.length})
-                </summary>
-                {listingHistory.length > 0 ? (
-                  <div className="mt-2 overflow-x-auto">
-                    <table className="w-full text-left text-xs text-gray-700">
-                      <thead className="border-b border-gray-200 text-gray-500">
-                        <tr>
-                          <th className="py-2 pr-2 font-medium">Listing</th>
-                           <th className="py-2 pr-2 font-medium">Posted</th>
-                           <th className="py-2 pr-2 font-medium">Location</th>
-                           <th className="py-2 font-medium">Applicants</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {listingHistory.map((instance) => (
-                          <tr key={`${instance.job_id}-${instance.scraped_at}`}>
-                            <td className="py-2 pr-2 font-medium">
-                              {instance.job_id}
-                              {latestListing?.job_id === instance.job_id && (
-                                <span className="ml-1 text-emerald-700">Latest</span>
-                              )}
-                            </td>
-                             <td className="py-2 pr-2">
-                               {instance.posted_at
-                                 ? formatDate(instance.posted_at)
-                                 : `Scraped ${formatDate(instance.scraped_at)}`}
-                               {instance.posted_relative_text && (
-                                 <span className="block text-gray-400">
-                                   {formatPostedRelative(instance.posted_relative_text)}
-                                 </span>
-                               )}
-                           </td>
-                           <td className="py-2 pr-2">
-                             {instance.location || "Not recorded"}
-                           </td>
-                           <td className="py-2">
-                              {instance.applicant_count ?? "-"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="mt-2 text-sm text-gray-400">
-                    No listing instances available.
-                  </p>
-                )}
-              </details>
+              {job.listing_instances?.length ? <ListingHistoryPanel job={job} /> : (
+                <p className="text-sm text-gray-400">No listing instances available.</p>
+              )}
             </div>
           </details>
 

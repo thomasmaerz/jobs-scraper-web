@@ -23,6 +23,50 @@ export function getSortedListingInstances(job: Job): ListingInstance[] {
   });
 }
 
+export interface PostingWaveGroup {
+  key: string;
+  index: number;
+  location: string | null;
+  postedAt: string | null;
+  instances: ListingInstance[];
+  isConfirmedRepost: boolean;
+}
+
+export function getPostingWaveGroups(job: Job): PostingWaveGroup[] {
+  const groups = new Map<string, PostingWaveGroup>();
+
+  for (const instance of getSortedListingInstances(job)) {
+    const key = instance.posting_wave_key || `legacy:${instance.job_id}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.instances.push(instance);
+      continue;
+    }
+    groups.set(key, {
+      key,
+      index: instance.posting_wave_index || 1,
+      location: instance.location || null,
+      postedAt: instance.posted_at || null,
+      instances: [instance],
+      isConfirmedRepost: instance.variant_type === "repost" || (instance.posting_wave_index || 1) > 1,
+    });
+  }
+
+  return [...groups.values()].sort((a, b) => {
+    const left = a.postedAt || a.instances[0]?.scraped_at || "";
+    const right = b.postedAt || b.instances[0]?.scraped_at || "";
+    return right.localeCompare(left);
+  });
+}
+
+export function getDistinctListingLocations(job: Job): string[] {
+  return [...new Set(
+    getListingInstances(job)
+      .map((instance) => instance.location?.trim())
+      .filter((location): location is string => Boolean(location)),
+  )].sort();
+}
+
 export interface ListingRecruiter {
   name: string;
   profileUrl: string | null;

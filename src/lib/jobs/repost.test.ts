@@ -4,6 +4,8 @@ import test from "node:test";
 import type { Job, ListingInstance } from "../../types.ts";
 import {
   getListingRecruiters,
+  getPostingWaveGroups,
+  getDistinctListingLocations,
   getSortedListingInstances,
   hasListingVariants,
 } from "./repost.ts";
@@ -45,6 +47,7 @@ function job(overrides: Partial<Job> = {}): Job {
     first_seen_at: null,
     last_seen_at: null,
     seen_count: 1,
+    posting_wave_count: 1,
     repost_count: 0,
     search_query: null,
     archetype: null,
@@ -63,6 +66,20 @@ function job(overrides: Partial<Job> = {}): Job {
 test("listing variants are detected without inferring chronology", () => {
   assert.equal(hasListingVariants(job()), false);
   assert.equal(hasListingVariants(job({ seen_count: 8, repost_count: 7 })), true);
+});
+
+test("posting waves group simultaneous variants without losing source IDs", () => {
+  const instances = [
+    { job_id: "1", location: "Toronto", scraped_at: "2026-08-20", posted_at: "2026-08-20", posted_relative_text: null, applicant_count: null, salary_text: null, recruiter_name: null, recruiter_profile_url: null, recruiter_identifier: null, posting_wave_key: "toronto|posted:2026-08-20", posting_wave_index: 1, variant_type: "original" },
+    { job_id: "2", location: "Toronto", scraped_at: "2026-08-20", posted_at: "2026-08-20", posted_relative_text: null, applicant_count: null, salary_text: null, recruiter_name: "Jane", recruiter_profile_url: null, recruiter_identifier: null, posting_wave_key: "toronto|posted:2026-08-20", posting_wave_index: 1, variant_type: "simultaneous_variant" },
+    { job_id: "3", location: "Calgary", scraped_at: "2026-08-20", posted_at: "2026-08-20", posted_relative_text: null, applicant_count: null, salary_text: null, recruiter_name: null, recruiter_profile_url: null, recruiter_identifier: null, posting_wave_key: "calgary|posted:2026-08-20", posting_wave_index: 1, variant_type: "location_variant" },
+  ] satisfies ListingInstance[];
+
+  const waves = getPostingWaveGroups(job({ listing_instances: instances }));
+
+  assert.equal(waves.length, 2);
+  assert.equal(waves.find((wave) => wave.location === "Toronto")?.instances.length, 2);
+  assert.deepEqual(getDistinctListingLocations(job({ listing_instances: instances })), ["Calgary", "Toronto"]);
 });
 
 test("listing recruiters are deduplicated and retain profile links", () => {

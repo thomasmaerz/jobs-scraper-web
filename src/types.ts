@@ -32,6 +32,18 @@ export interface ListingInstance {
   recruiter_name: string | null;
   recruiter_profile_url: string | null;
   recruiter_identifier: string | null;
+  normalized_location?: string | null;
+  posting_wave_key?: string | null;
+  posting_wave_index?: number | null;
+  variant_type?: "original" | "simultaneous_variant" | "location_variant" | "repost" | null;
+  location_source?: "source_snapshot" | "canonical_anchor" | "linkedin_rescrape" | null;
+  location_observed_at?: string | null;
+  scrape_run_id?: string | null;
+  last_seen_at?: string | null;
+  salary_min?: number | null;
+  salary_max?: number | null;
+  salary_currency?: string | null;
+  salary_metadata_source?: string | null;
 }
 
 export interface Job {
@@ -75,6 +87,7 @@ export interface Job {
   first_seen_at: string | null;
   last_seen_at: string | null;
   seen_count: number | null;
+  posting_wave_count?: number | null;
   repost_count: number | null;
   search_query: string | null;
   archetype: string | null;

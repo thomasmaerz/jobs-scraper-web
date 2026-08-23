@@ -159,5 +159,5 @@ export function formatRepostCount(
   count: number | null | undefined,
 ): string {
   if (count == null || count <= 0) return "";
-  return `Repost count: ${count}`;
+  return `${count} confirmed repost${count === 1 ? "" : "s"}`;
 }
