@@ -62,10 +62,10 @@ export function formatLevel(level: string | null | undefined): string {
 
   const normalized = level.trim().toLowerCase().replace(/[\s-]+/g, "_");
   const labels: Record<string, string> = {
-    not_applicable: "Not Applicable",
-    not_applicable_level: "Not Applicable",
-    n_a: "Not Applicable",
-    na: "Not Applicable",
+    not_applicable: "Seniority unspecified",
+    not_applicable_level: "Seniority unspecified",
+    n_a: "Seniority unspecified",
+    na: "Seniority unspecified",
     entry: "Entry",
     entry_level: "Entry",
     associate: "Associate",
@@ -87,17 +87,74 @@ export function formatLevel(level: string | null | undefined): string {
   return labels[normalized] ?? level;
 }
 
+export function hasSpecifiedLevel(level: string | null | undefined): boolean {
+  return Boolean(level && formatLevel(level) !== "Seniority unspecified");
+}
+
+export function formatArchetype(archetype: string | null | undefined): string {
+  if (!archetype) return "";
+  if (archetype.trim().toLowerCase() === "software_tpm") return "Software TPM";
+  return archetype.replaceAll("_", " ");
+}
+
 export function formatSeenCount(count: number | null | undefined): string {
-  return count != null && count > 0 ? `Seen ${count}x` : "";
+  if (count == null || count <= 0) return "";
+  return count === 1 ? "1 listing ID" : `${count} listing IDs`;
 }
 
 export function formatFilterReason(
   reason: string | null | undefined,
 ): string {
-  return reason ? `filtered: ${reason}` : "";
+  if (!reason) return "";
+
+  const normalized = reason.toLowerCase();
+  const source = reason.split(":", 1)[0];
+  let label: string;
+
+  if (normalized.includes("account manager")) {
+    label = "account management role";
+  } else if (normalized.includes("customer success")) {
+    label = "customer success role";
+  } else if (normalized.includes("clinical")) {
+    label = "clinical role";
+  } else if (normalized.includes("jobgether")) {
+    label = "job aggregator listing";
+  } else if (
+    [
+      "construction",
+      "subcontract",
+      "general contractor",
+      "preconstruction",
+      "site inspection",
+      "civil engineering",
+      "epcm",
+      "procore",
+      "shop drawings",
+      "subtrade",
+      "tenant improvement",
+      "land development",
+      "natural and built assets",
+      "mep",
+      "ici",
+    ].some((term) => normalized.includes(term))
+  ) {
+    label = "construction-related role";
+  } else if (source === "title_entry_level") {
+    label = "entry-level title";
+  } else if (source === "title") {
+    label = "title matched an exclusion rule";
+  } else if (source === "company") {
+    label = "company matched an exclusion rule";
+  } else {
+    label = "description matched an exclusion rule";
+  }
+
+  return `Filtered: ${label}`;
 }
 
-export function formatRepostCount(count: number | null | undefined): string {
+export function formatAdditionalListingCount(
+  count: number | null | undefined,
+): string {
   if (count == null || count <= 0) return "";
-  return count === 1 ? "Reposted 1 time" : `Reposted ${count} times`;
+  return count === 1 ? "1 additional listing ID" : `${count} additional listing IDs`;
 }

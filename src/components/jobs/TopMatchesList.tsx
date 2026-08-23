@@ -19,16 +19,18 @@ import { Job } from "@/types";
 import { useRouter, useSearchParams } from "next/navigation"; // Added useSearchParams
 import {
   formatFilterReason,
+  formatArchetype,
   formatLevel,
+  hasSpecifiedLevel,
   formatSalary,
   formatSeenCount,
   getExternalJobUrl,
   sanitizeExternalUrl,
 } from "@/lib/jobs/formatters";
 import {
-  getRepostSummary,
+  getListingVariantSummary,
   getSortedListingInstances,
-  hasReposts,
+  hasListingVariants,
 } from "@/lib/jobs/repost";
 
 interface TopMatchesListProps {
@@ -54,6 +56,14 @@ function getLevelBadgeColor(level: string | null): string {
     default:
       return "bg-gray-100 text-gray-700";
   }
+}
+
+function formatListingDate(value: string): string {
+  return new Date(value).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 export default function TopMatchesList({
@@ -262,8 +272,8 @@ export default function TopMatchesList({
   );
 
   const selectedJobSalary = selectedJob ? formatSalary(selectedJob) : null;
-  const selectedJobRepostSummary = selectedJob
-    ? getRepostSummary(selectedJob)
+  const selectedJobListingSummary = selectedJob
+    ? getListingVariantSummary(selectedJob)
     : null;
   const selectedJobListingHistory = selectedJob
     ? getSortedListingInstances(selectedJob)
@@ -324,7 +334,7 @@ export default function TopMatchesList({
                         {formatSalary(job) && <span>{formatSalary(job)}</span>}
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        {job.level && (
+                        {hasSpecifiedLevel(job.level) && (
                           <span
                             className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${getLevelBadgeColor(job.level)}`}
                           >
@@ -333,7 +343,7 @@ export default function TopMatchesList({
                         )}
                         {job.archetype && (
                           <span className="inline-flex rounded bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700">
-                            {job.archetype}
+                            {formatArchetype(job.archetype)}
                           </span>
                         )}
                         {formatSeenCount(job.seen_count) && (
@@ -383,11 +393,6 @@ export default function TopMatchesList({
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
                         <ThumbsDown className="h-3 w-3 mr-1" />
                         Not Interested
-                      </span>
-                    )}
-                    {hasReposts(job) && (
-                      <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                        {getRepostSummary(job) || "Reposted role"}
                       </span>
                     )}
                   </div>
@@ -461,9 +466,9 @@ export default function TopMatchesList({
                         )}
                       </span>
                     )}
-                    {selectedJobRepostSummary && (
+                    {selectedJobListingSummary && (
                       <span className="text-amber-700 font-medium">
-                        {selectedJobRepostSummary}
+                        {selectedJobListingSummary}
                       </span>
                     )}
                   </div>
@@ -584,11 +589,6 @@ export default function TopMatchesList({
                     Not Interested
                   </button>
                 </div>
-                {hasReposts(selectedJob) && (
-                  <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 self-center">
-                    {selectedJobRepostSummary || "Reposted role"}
-                  </span>
-                )}
                 {selectedJob.scraped_at && (
                   <span className="ml-auto text-xs text-gray-400 self-center">
                     Scraped {new Date(selectedJob.scraped_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
@@ -597,28 +597,34 @@ export default function TopMatchesList({
               </div>
             </div>
 
-            {hasReposts(selectedJob) && (
+            {hasListingVariants(selectedJob) && (
               <div className="px-6 pt-4 space-y-4">
-                {hasReposts(selectedJob) && (
+                {hasListingVariants(selectedJob) && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                     <h3 className="font-medium text-amber-900">Listing history</h3>
                     <p className="mt-1 text-sm text-amber-800">
-                      This role has appeared multiple times on LinkedIn.
+                      Distinct source listing IDs grouped as one role. These may be
+                      simultaneous variants or crossposts, not chronological reposts.
                     </p>
                     <ul className="mt-3 space-y-2 text-sm text-amber-900">
                       {selectedJobListingHistory.map((instance) => (
                         <li key={`${instance.job_id}-${instance.scraped_at}`}>
                           <span className="font-medium">
-                            {instance.posted_relative_text ||
-                              instance.posted_at ||
-                              "Seen"}
+                            {instance.posted_at
+                              ? formatListingDate(instance.posted_at)
+                              : `Scraped ${formatListingDate(instance.scraped_at)}`}
                           </span>
+                          {instance.posted_relative_text
+                            ? ` • listed ${instance.posted_relative_text} at scrape time`
+                            : ""}
+                          {` • ID ${instance.job_id}`}
                           {instance.applicant_count != null
                             ? ` • ${instance.applicant_count} applicants`
                             : ""}
                           {instance.recruiter_name
                             ? ` • ${instance.recruiter_name}`
                             : ""}
+                          {` • ${instance.location || "location not recorded"}`}
                         </li>
                       ))}
                     </ul>

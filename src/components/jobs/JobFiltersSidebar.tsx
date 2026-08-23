@@ -52,6 +52,9 @@ const DATE_OPTIONS = [
   { value: "7d", label: "Last week" },
   { value: "30d", label: "Last month" },
 ] as const;
+const LEVEL_LABELS: Record<string, string> = {
+  "Not Applicable": "Seniority unspecified",
+};
 
 const PROVINCE_LABELS: Record<string, string> = {
   AB: "Alberta", BC: "British Columbia", MB: "Manitoba", NB: "New Brunswick",
@@ -283,6 +286,7 @@ export default function JobFiltersSidebar({
               <CheckboxList
                 values={LEVEL_VALUES}
                 selected={filters.level ?? []}
+                labels={LEVEL_LABELS}
                 onChange={(selected) => updateArray("level", selected)}
               />
             </FilterSection>
@@ -390,9 +394,9 @@ export default function JobFiltersSidebar({
           )}
 
           {supportedFilters.includes("repostCount") && (
-            <FilterSection label="Repost count">
+            <FilterSection label="Additional listing IDs">
               <NumericDraft
-                label="Minimum repost count"
+                label="Minimum additional listing IDs"
                 value={filters.minRepostCount}
                 minimum={0}
                 onCommit={(value) => updateScalar("minRepostCount", value)}
@@ -401,9 +405,9 @@ export default function JobFiltersSidebar({
           )}
 
           {supportedFilters.includes("seenCount") && (
-            <FilterSection label="Seen count">
+            <FilterSection label="Listing ID count">
               <NumericDraft
-                label="Minimum seen count"
+                label="Minimum listing ID count"
                 value={filters.minSeenCount}
                 minimum={0}
                 onCommit={(value) => updateScalar("minSeenCount", value)}

@@ -22,8 +22,11 @@ import type {
   JobKeywordInsightCategory,
 } from "@/types";
 import {
+  formatArchetype,
   formatLevel,
-  formatRepostCount,
+  formatAdditionalListingCount,
+  formatFilterReason,
+  hasSpecifiedLevel,
   formatSalary,
   formatSeenCount,
   getExternalJobUrl,
@@ -31,7 +34,7 @@ import {
 } from "@/lib/jobs/formatters";
 import {
   getLatestListingInstance,
-  getRepostSummary,
+  getListingVariantSummary,
   getSortedListingInstances,
 } from "@/lib/jobs/repost";
 
@@ -190,7 +193,7 @@ export default function JobDetailsClient({
 
   const jobUrl = getExternalJobUrl(job);
   const latestListing = getLatestListingInstance(job);
-  const repostSummary = getRepostSummary(job);
+  const listingVariantSummary = getListingVariantSummary(job);
   const salaryDisplay = formatSalary(job);
   const listingHistory = getSortedListingInstances(job);
   const recruiterProfileUrl = sanitizeExternalUrl(job.recruiter_profile_url);
@@ -230,7 +233,7 @@ export default function JobDetailsClient({
               )}
             </div>
             <div className="mt-3 flex flex-wrap gap-2 text-sm text-gray-600">
-              {job.level && (
+              {hasSpecifiedLevel(job.level) && (
                 <span className="rounded bg-orange-100 px-2 py-0.5 font-medium text-orange-800">
                   {formatLevel(job.level)}
                 </span>
@@ -259,8 +262,10 @@ export default function JobDetailsClient({
                   )}
                 </span>
               )}
-              {repostSummary && (
-                <span className="font-medium text-amber-700">{repostSummary}</span>
+              {listingVariantSummary && (
+                <span className="font-medium text-amber-700">
+                  {listingVariantSummary}
+                </span>
               )}
             </div>
           </div>
@@ -388,7 +393,10 @@ export default function JobDetailsClient({
             </summary>
             <dl className="space-y-2 border-t border-gray-100 px-4 py-4 text-sm">
               {job.archetype && (
-                <MetadataRow label="Archetype" value={job.archetype} />
+                <MetadataRow
+                  label="Archetype"
+                  value={formatArchetype(job.archetype)}
+                />
               )}
               {job.filter_profile && (
                 <MetadataRow label="Filter Profile" value={job.filter_profile} />
@@ -406,7 +414,7 @@ export default function JobDetailsClient({
               {job.is_filtered && job.filter_reason && (
                 <MetadataRow
                   label="Filter Reason"
-                  value={job.filter_reason}
+                  value={formatFilterReason(job.filter_reason)}
                   valueClassName="text-red-700"
                 />
               )}
@@ -450,14 +458,17 @@ export default function JobDetailsClient({
                 )}
                 {job.seen_count != null && (
                   <MetadataRow
-                    label="Seen Count"
+                    label="Listing ID Count"
                     value={formatSeenCount(job.seen_count) || job.seen_count}
                   />
                 )}
                 {job.repost_count != null && (
                   <MetadataRow
-                    label="Repost Count"
-                    value={formatRepostCount(job.repost_count) || job.repost_count}
+                    label="Additional Listing IDs"
+                    value={
+                      formatAdditionalListingCount(job.repost_count) ||
+                      job.repost_count
+                    }
                   />
                 )}
                 {job.original_job_id && (
@@ -475,14 +486,21 @@ export default function JobDetailsClient({
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                   Listing Instances
                 </h3>
+                {listingVariantSummary && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Distinct source listing IDs grouped as one role. They may be
+                    simultaneous variants or crossposts, not confirmed reposts.
+                  </p>
+                )}
                 {listingHistory.length > 0 ? (
                   <div className="mt-2 overflow-x-auto">
                     <table className="w-full text-left text-xs text-gray-700">
                       <thead className="border-b border-gray-200 text-gray-500">
                         <tr>
                           <th className="py-2 pr-2 font-medium">Listing</th>
-                          <th className="py-2 pr-2 font-medium">Seen</th>
-                          <th className="py-2 font-medium">Applicants</th>
+                           <th className="py-2 pr-2 font-medium">Posted</th>
+                           <th className="py-2 pr-2 font-medium">Location</th>
+                           <th className="py-2 font-medium">Applicants</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -494,13 +512,20 @@ export default function JobDetailsClient({
                                 <span className="ml-1 text-emerald-700">Latest</span>
                               )}
                             </td>
-                            <td className="py-2 pr-2">
-                              {instance.posted_relative_text ||
-                                (instance.posted_at
-                                  ? formatDate(instance.posted_at)
-                                  : formatDate(instance.scraped_at))}
-                            </td>
-                            <td className="py-2">
+                             <td className="py-2 pr-2">
+                               {instance.posted_at
+                                 ? formatDate(instance.posted_at)
+                                 : `Scraped ${formatDate(instance.scraped_at)}`}
+                               {instance.posted_relative_text && (
+                                 <span className="block text-gray-400">
+                                   Listed {instance.posted_relative_text} at scrape
+                                 </span>
+                               )}
+                           </td>
+                           <td className="py-2 pr-2">
+                             {instance.location || "Not recorded"}
+                           </td>
+                           <td className="py-2">
                               {instance.applicant_count ?? "-"}
                             </td>
                           </tr>

@@ -26,7 +26,8 @@ const LABELS: Record<string, (value: string) => string> = {
         : "Not marked",
   minScore: (value) => `Score at least ${value}`,
   maxScore: (value) => `Score at most ${value}`,
-  level: (value) => `Level: ${value}`,
+  level: (value) =>
+    `Level: ${value === "Not Applicable" ? "Seniority unspecified" : value}`,
   archetype: (value) => `Archetype: ${value}`,
   filterStatus: (value) =>
     value === "show_filtered"
@@ -35,8 +36,8 @@ const LABELS: Record<string, (value: string) => string> = {
   hasSalary: () => "Has salary",
   salaryMin: (value) => `Salary at least ${value}`,
   salaryMax: (value) => `Salary at most ${value}`,
-  minRepostCount: (value) => `Reposted at least ${value}`,
-  minSeenCount: (value) => `Seen at least ${value}`,
+  minRepostCount: (value) => `Additional listing IDs: at least ${value}`,
+  minSeenCount: (value) => `Listing IDs: at least ${value}`,
   datePosted: (value) =>
     value === "24h" ? "Last 24 hours" : value === "7d" ? "Last week" : "Last month",
   applicationStatus: (value) =>

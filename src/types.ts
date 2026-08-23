@@ -23,6 +23,7 @@ export interface KeywordInsight {
 
 export interface ListingInstance {
   job_id: string;
+  location?: string | null;
   scraped_at: string;
   posted_at: string | null;
   posted_relative_text: string | null;

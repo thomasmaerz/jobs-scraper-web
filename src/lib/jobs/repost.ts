@@ -4,7 +4,7 @@ export function getListingInstances(job: Job): ListingInstance[] {
   return Array.isArray(job.listing_instances) ? job.listing_instances : [];
 }
 
-export function hasReposts(job: Job): boolean {
+export function hasListingVariants(job: Job): boolean {
   return (job.repost_count || 0) > 0 || getListingInstances(job).length > 1;
 }
 
@@ -23,11 +23,13 @@ export function getSortedListingInstances(job: Job): ListingInstance[] {
   });
 }
 
-export function getRepostSummary(job: Job): string | null {
-  const inferredFromInstances = Math.max(getListingInstances(job).length - 1, 0);
-  const repostCount = Math.max(job.repost_count || 0, inferredFromInstances);
+export function getListingVariantSummary(job: Job): string | null {
+  const listingCount = Math.max(
+    getListingInstances(job).length,
+    (job.repost_count || 0) + 1,
+  );
 
-  if (repostCount <= 0) return null;
+  if (listingCount <= 1) return null;
 
-  return repostCount === 1 ? "Reposted once" : `Reposted ${repostCount} times`;
+  return `${listingCount} listing IDs`;
 }

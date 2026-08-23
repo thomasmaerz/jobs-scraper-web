@@ -133,8 +133,8 @@ export const SORT_OPTIONS: readonly SortOption[] = [
   { field: "resume_score", label: "Resume Score" },
   { field: "application_date", label: "Application Date" },
   { field: "salary_min", label: "Salary" },
-  { field: "repost_count", label: "Repost Count" },
-  { field: "seen_count", label: "Seen Count" },
+  { field: "repost_count", label: "Additional Listing IDs" },
+  { field: "seen_count", label: "Listing ID Count" },
 ];
 
 export function resolveFilterStatus(
