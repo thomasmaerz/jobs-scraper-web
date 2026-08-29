@@ -18,3 +18,19 @@ test("leaves valid markdown unchanged", () => {
     "A paragraph with **bold text** inside.",
   );
 });
+
+test("repairs RELQ headings without corrupting inline bold phrases", () => {
+  const source = "**Job Title: IT Agile Project Manager with AWS****Location: Remote  \n\nDuration: 12+ Months (Contract)****Coordination for Release Needed****Client Domain**Product company.\n\n**Job Summary**We need **Jira**, **Confluence**, and **business intelligence (BI) reporting tools** to deliver.";
+
+  assert.equal(
+    normalizeJobDescriptionMarkdown(source),
+    "**Job Title: IT Agile Project Manager with AWS**\n\n**Location: Remote**\n\n**Duration: 12+ Months (Contract)**\n\n**Coordination for Release Needed**\n\n**Client Domain**\n\nProduct company.\n\n**Job Summary**\n\nWe need **Jira**, **Confluence**, and **business intelligence (BI) reporting tools** to deliver.",
+  );
+});
+
+test("does not pair adjacent closing and opening inline delimiters", () => {
+  assert.equal(
+    normalizeJobDescriptionMarkdown("Use **Jira**, **Confluence**, and **Power BI** daily."),
+    "Use **Jira**, **Confluence**, and **Power BI** daily.",
+  );
+});

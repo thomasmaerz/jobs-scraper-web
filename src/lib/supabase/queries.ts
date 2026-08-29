@@ -254,17 +254,25 @@ function applyJobPredicates(
     const clauses: string[] = [];
     if (options.locationScope.includes("country")) {
       clauses.push("location_scope.eq.country");
+      clauses.push("listing_location_scopes.cs.{country}");
     }
     if (regionalScopes.length) {
       clauses.push(
         `and(location_province_code.in.(${options.province.join(",")}),location_scope.in.(${regionalScopes.join(",")}))`,
       );
+      clauses.push(
+        `and(listing_location_province_codes.ov.{${options.province.join(",")}},listing_location_scopes.ov.{${regionalScopes.join(",")}})`,
+      );
     }
     query = query.or(clauses.join(","));
   } else if (options.province?.length) {
-    query = query.in("location_province_code", options.province);
+    query = query.or(
+      `location_province_code.in.(${options.province.join(",")}),listing_location_province_codes.ov.{${options.province.join(",")}}`,
+    );
   } else if (options.locationScope?.length) {
-    query = query.in("location_scope", options.locationScope);
+    query = query.or(
+      `location_scope.in.(${options.locationScope.join(",")}),listing_location_scopes.ov.{${options.locationScope.join(",")}}`,
+    );
   }
   if (options.excludeMetro?.length) {
     query = query.or(

@@ -34,6 +34,12 @@ export function getExternalJobUrl(job: Job): string | null {
   return null;
 }
 
+export function getLinkedInListingUrl(jobId: string | null | undefined): string | null {
+  const listingId = jobId?.trim();
+  if (!listingId || !/^\d+$/.test(listingId)) return null;
+  return `https://www.linkedin.com/jobs/view/${listingId}`;
+}
+
 export function formatSalary(job: Job): string | null {
   if (job.salary_text) return job.salary_text;
 

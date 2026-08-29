@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
     return config;
   },
   turbopack: {
+    root: __dirname,
     resolveAlias: {
       canvas: "./src/lib/empty-module.js",
     },

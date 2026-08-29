@@ -1,5 +1,6 @@
 import type { Job, ListingInstance } from "@/types";
 import { getDistinctListingLocations, getPostingWaveGroups } from "@/lib/jobs/repost";
+import { getLinkedInListingUrl } from "@/lib/jobs/formatters";
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return "—";
@@ -92,7 +93,21 @@ function WaveRows({ wave }: { wave: ReturnType<typeof getPostingWaveGroups>[numb
       </tr>
       {wave.instances.map((instance) => (
         <tr key={`${wave.key}:${instance.job_id}`} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50">
-          <td className="truncate px-3 py-1.5 font-mono text-[11px] text-slate-700" title={instance.job_id}>{instance.job_id}</td>
+          <td className="truncate px-3 py-1.5 font-mono text-[11px]" title={instance.job_id}>
+            {getLinkedInListingUrl(instance.job_id) ? (
+              <a
+                href={getLinkedInListingUrl(instance.job_id) || undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-indigo-700 underline decoration-indigo-300 underline-offset-2 hover:text-indigo-900"
+                aria-label={`Open LinkedIn listing ${instance.job_id}`}
+              >
+                {instance.job_id}
+              </a>
+            ) : (
+              <span className="text-slate-700">{instance.job_id}</span>
+            )}
+          </td>
           <td className="px-2 py-1.5">{variantLabel(instance)}</td>
           <td className="px-2 py-1.5 whitespace-nowrap">{formatDate(instance.scraped_at)}</td>
           <td className="truncate px-2 py-1.5" title={instance.recruiter_name || undefined}>{instance.recruiter_name || "—"}</td>

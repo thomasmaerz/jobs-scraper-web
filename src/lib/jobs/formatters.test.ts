@@ -7,8 +7,18 @@ import {
   formatPostedRelative,
   formatRepostCount,
   formatArchetype,
+  getLinkedInListingUrl,
   hasSpecifiedLevel,
 } from "./formatters.ts";
+
+test("builds safe LinkedIn listing URLs from source IDs", () => {
+  assert.equal(
+    getLinkedInListingUrl("4430494163"),
+    "https://www.linkedin.com/jobs/view/4430494163",
+  );
+  assert.equal(getLinkedInListingUrl("javascript:alert(1)"), null);
+  assert.equal(getLinkedInListingUrl(null), null);
+});
 
 test("formatLevel supports exact database values", () => {
   assert.equal(formatLevel("Not Applicable"), "Seniority unspecified");

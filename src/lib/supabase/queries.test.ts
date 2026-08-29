@@ -180,8 +180,8 @@ test("job-list filters emit their individual Supabase predicates", async () => {
     { name: "salary maximum", options: { hasSalary: true, salaryMax: 180000 }, expected: { method: "lte", args: ["salary_min", 180000] } },
     { name: "repost minimum", options: { minRepostCount: 2 }, expected: { method: "gte", args: ["repost_count", 2] } },
     { name: "seen minimum", options: { minSeenCount: 3 }, expected: { method: "gte", args: ["seen_count", 3] } },
-    { name: "provinces", options: { province: ["AB", "BC"] }, expected: { method: "in", args: ["location_province_code", ["AB", "BC"]] } },
-    { name: "location scopes", options: { locationScope: ["local", "country"] }, expected: { method: "in", args: ["location_scope", ["local", "country"]] } },
+    { name: "provinces", options: { province: ["AB", "BC"] }, expected: { method: "or", args: ["location_province_code.in.(AB,BC),listing_location_province_codes.ov.{AB,BC}"] } },
+    { name: "location scopes", options: { locationScope: ["local", "country"] }, expected: { method: "or", args: ["location_scope.in.(local,country),listing_location_scopes.ov.{local,country}"] } },
     { name: "excluded metros", options: { excludeMetro: ["calgary", "vancouver"] }, expected: { method: "or", args: ["location_metro.is.null,location_metro.not.in.(calgary,vancouver)"] } },
   ];
 
@@ -206,7 +206,7 @@ test("province filters can include Canada-wide jobs without restricting them to 
   assert.ok(mock.calls.some((call) =>
     call.method === "or" &&
       call.args[0] ===
-        "location_scope.eq.country,and(location_province_code.in.(AB,BC),location_scope.in.(local))"
+        "location_scope.eq.country,listing_location_scopes.cs.{country},and(location_province_code.in.(AB,BC),location_scope.in.(local)),and(listing_location_province_codes.ov.{AB,BC},listing_location_scopes.ov.{local})"
   ));
 });
 

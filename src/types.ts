@@ -55,6 +55,8 @@ export interface Job {
   location_province_code?: string | null;
   location_scope?: string | null;
   location_metro?: string | null;
+  listing_location_province_codes?: string[] | null;
+  listing_location_scopes?: string[] | null;
   description: string | null;
   status: string | null;
   is_active: boolean | null;
