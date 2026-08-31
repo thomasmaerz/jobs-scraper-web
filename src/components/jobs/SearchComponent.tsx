@@ -2,12 +2,14 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
+import { parseBooleanSearch } from "@/lib/jobs/booleanSearch";
 
 export default function SearchComponent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setSearchQuery(searchParams.get("query") || "");
@@ -15,9 +17,18 @@ export default function SearchComponent() {
 
   const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const trimmed = searchQuery.trim();
+    if (trimmed) {
+      const parsed = parseBooleanSearch(trimmed);
+      if (!parsed.ok) {
+        setError(`${parsed.error} (at character ${parsed.position + 1})`);
+        return;
+      }
+    }
+    setError(null);
     const params = new URLSearchParams(searchParams.toString());
-    if (searchQuery.trim()) {
-      params.set("query", searchQuery.trim());
+    if (trimmed) {
+      params.set("query", trimmed);
     } else {
       params.delete("query");
     }
@@ -27,7 +38,7 @@ export default function SearchComponent() {
   };
 
   return (
-    <div className="w-80">
+    <div className="w-96 max-w-full">
       <form onSubmit={handleSearch} className="relative group">
         <div
           className={`
@@ -67,10 +78,15 @@ export default function SearchComponent() {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setError(null);
+            }}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
-            placeholder="Search jobs..."
+            placeholder='Search: TPM AND (cloud OR "program manager") NOT sales'
+            aria-invalid={Boolean(error)}
+            aria-describedby="job-search-help"
             className="
               w-full
               pl-10 pr-16 py-2.5
@@ -128,6 +144,9 @@ export default function SearchComponent() {
         `}
         />
       </form>
+      <p id="job-search-help" className={`mt-1 px-1 text-[11px] ${error ? "text-red-600" : "text-gray-500"}`}>
+        {error || "Supports AND, OR, NOT, parentheses, quoted phrases, and implicit AND."}
+      </p>
     </div>
   );
 }

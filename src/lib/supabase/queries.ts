@@ -12,6 +12,7 @@ import type {
   SortField,
   SortOrder,
 } from "../filters/types.ts";
+import { parseBooleanSearch, type BooleanSearchNode } from "../jobs/booleanSearch.ts";
 
 if (!process.env.NODE_TEST_CONTEXT) {
   await import("server-only");
@@ -90,6 +91,7 @@ const dateCutoffCache = new WeakMap<
   object,
   Partial<Record<"24h" | "7d" | "30d", string>>
 >();
+const booleanSearchCache = new WeakMap<object, Map<JobListKind, Promise<BooleanSearchPage>>>();
 
 export interface KeywordInsightsQueryOptions {
   provider?: string | readonly string[];
@@ -170,16 +172,6 @@ function pageRange(options: InternalJobListOptions) {
   const pageSize = Math.min(safePositiveInteger(options.pageSize, 25), 100);
   const from = (page - 1) * pageSize;
   return { from, to: from + pageSize - 1 };
-}
-
-function sanitizeSearchTerm(value: string | undefined): string | undefined {
-  const sanitized = value
-    ?.trim()
-    .slice(0, 500)
-    .replace(/[^\p{L}\p{N}\s&+\/-]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return sanitized || undefined;
 }
 
 function datePostedCutoff(
@@ -307,12 +299,97 @@ function applyJobPredicates(
   const cutoff = datePostedCutoff(options.datePosted, options);
   if (cutoff) query = query.gte("effective_posted_at", cutoff);
 
-  const search = sanitizeSearchTerm(options.query);
-  if (search) {
-    query = query.or(`job_title.ilike.%${search}%,company.ilike.%${search}%`);
-  }
-
   return query;
+}
+
+type BooleanSearchPage = {
+  jobIds: string[];
+  totalCount: number;
+};
+
+function scoreBounds(kind: JobListKind, options: InternalJobListOptions) {
+  const useDefaults = options.filterStatus !== "entry_level";
+  return {
+    minScore: finiteNumber(options.minScore) ?? (useDefaults ? (kind === "top" ? 50 : kind === "new" ? 0 : undefined) : undefined),
+    maxScore: finiteNumber(options.maxScore) ?? (useDefaults && (kind === "new" || kind === "top") ? 100 : undefined),
+  };
+}
+
+function booleanSearchAst(query: string | undefined): BooleanSearchNode | null {
+  if (!query?.trim()) return null;
+  const parsed = parseBooleanSearch(query);
+  if (!parsed.ok) throw new Error(`${parsed.error} at character ${parsed.position + 1}`);
+  return parsed.ast;
+}
+
+async function getBooleanSearchPage(
+  supabase: any,
+  kind: JobListKind,
+  options: InternalJobListOptions,
+  ast: BooleanSearchNode,
+): Promise<BooleanSearchPage> {
+  let byKind = booleanSearchCache.get(options);
+  if (!byKind) {
+    byKind = new Map();
+    booleanSearchCache.set(options, byKind);
+  }
+  const cached = byKind.get(kind);
+  if (cached) return cached;
+
+  const promise = (async () => {
+    const range = pageRange(options);
+    const requestedLimit = range ? range.to - range.from + 1 : null;
+    const requestedOffset = range?.from ?? 0;
+    const requestedSort = options.sortBy;
+    const sortBy = requestedSort && JOB_SORT_FIELDS[kind].includes(requestedSort)
+      ? requestedSort
+      : DEFAULT_SORT[kind];
+    const scores = scoreBounds(kind, options);
+    const baseParams = {
+      p_search_ast: ast,
+      p_kind: kind,
+      p_provider: options.provider ?? null,
+      p_levels: options.level?.length ? options.level : null,
+      p_archetypes: options.archetype?.length ? options.archetype : null,
+      p_interest: options.interest === true ? "true" : options.interest === false ? "false" : options.interest,
+      p_application_status: options.applicationStatus ?? null,
+      p_filter_status: options.filterStatus ?? null,
+      p_min_score: scores.minScore ?? null,
+      p_max_score: scores.maxScore ?? null,
+      p_provinces: options.province?.length ? options.province : null,
+      p_location_scopes: options.locationScope?.length ? options.locationScope : null,
+      p_exclude_metros: options.excludeMetro?.length ? options.excludeMetro : null,
+      p_has_salary: options.hasSalary === true,
+      p_salary_min: finiteNumber(options.salaryMin) ?? null,
+      p_salary_max: finiteNumber(options.salaryMax) ?? null,
+      p_min_repost_count: finiteNumber(options.minRepostCount) ?? null,
+      p_min_seen_count: finiteNumber(options.minSeenCount) ?? null,
+      p_posted_after: datePostedCutoff(options.datePosted, options) ?? null,
+      p_sort_by: sortBy,
+      p_sort_order: options.sortOrder === "asc" ? "asc" : "desc",
+    };
+    const jobIds: string[] = [];
+    let totalCount = 0;
+    let offset = requestedOffset;
+    do {
+      const limit = Math.min(requestedLimit ?? 1000, 1000);
+      const response = await supabase.rpc("search_job_ids_v1", {
+        ...baseParams,
+        p_limit: limit,
+        p_offset: offset,
+      });
+      if (response.error) throw new Error(response.error.message || "Boolean job search failed");
+      const rows = (response.data ?? []) as Array<{ job_id: string | null; total_count: number | string }>;
+      if (rows.length) totalCount = Number(rows[0].total_count);
+      const batch = rows.flatMap((row) => typeof row.job_id === "string" ? [row.job_id] : []);
+      jobIds.push(...batch);
+      offset += batch.length;
+      if (requestedLimit !== null || batch.length < limit || offset >= totalCount) break;
+    } while (true);
+    return { jobIds, totalCount };
+  })();
+  byKind.set(kind, promise);
+  return promise;
 }
 
 function applyJobSort(query: any, kind: JobListKind, options: InternalJobListOptions) {
@@ -336,6 +413,20 @@ function applyJobSort(query: any, kind: JobListKind, options: InternalJobListOpt
 
 async function getJobRows(kind: JobListKind, options: InternalJobListOptions): Promise<Job[]> {
   const supabase = await supabaseClientFactory();
+  const ast = booleanSearchAst(options.query);
+  if (ast) {
+    const search = await getBooleanSearchPage(supabase, kind, options, ast);
+    if (!search.jobIds.length) return [];
+    const jobs: Job[] = [];
+    for (let start = 0; start < search.jobIds.length; start += 500) {
+      const response = await supabase.from("jobs").select(
+        "*, customized_resumes!jobs_customized_resume_id_fkey(resume_link)",
+      ).in("job_id", search.jobIds.slice(start, start + 500));
+      jobs.push(...(((await handleResponse(response)) ?? []) as Job[]));
+    }
+    const rank = new Map(search.jobIds.map((jobId, index) => [jobId, index]));
+    return jobs.sort((left, right) => rank.get(left.job_id)! - rank.get(right.job_id)!);
+  }
   const createQuery = () =>
     applyJobSort(
       applyJobPredicates(
@@ -367,6 +458,8 @@ async function getJobRows(kind: JobListKind, options: InternalJobListOptions): P
 
 async function getJobCount(kind: JobListKind, options: InternalJobListOptions): Promise<number> {
   const supabase = await supabaseClientFactory();
+  const ast = booleanSearchAst(options.query);
+  if (ast) return (await getBooleanSearchPage(supabase, kind, options, ast)).totalCount;
   const query = applyJobPredicates(
     supabase.from("jobs").select("*", { count: "exact", head: true }),
     kind,

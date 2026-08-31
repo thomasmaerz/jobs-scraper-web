@@ -136,7 +136,6 @@ test("all, new, top, and applied row/count queries keep every predicate in parit
       locationScope: ["local", "country"],
       excludeMetro: ["calgary", "vancouver"],
       datePosted: "7d",
-      query: "TPM),status.eq.applied",
       ...(list.name === "applied" ? { applicationStatus: "offer" as const } : {}),
     };
     const rowMock = createQueryClient();
@@ -233,7 +232,7 @@ test("interest and filterStatus defaults and overrides are exact", async () => {
   assert.equal(topCalls.some((call) => String(call.args[0]).includes("is_interested")), false);
 });
 
-test("date-posted and safe text filters are bounded and sanitized", async () => {
+test("date-posted filters are bounded", async () => {
   for (const [datePosted, hours] of [["24h", 24], ["7d", 168], ["30d", 720]] as const) {
     const now = Date.now();
     const calls = await rowCalls(getNewJobs, { datePosted });
@@ -244,9 +243,79 @@ test("date-posted and safe text filters are bounded and sanitized", async () => 
     const age = now - Date.parse(cutoff as string);
     assert.ok(age >= hours * 3_600_000 && age < hours * 3_600_000 + 61_000, datePosted);
   }
+});
 
-  const calls = await rowCalls(getNewJobs, { query: "  TPM),status.eq.applied  " });
-  assert.ok(hasCall(calls, "or", "job_title.ilike.%TPM status eq applied%,company.ilike.%TPM status eq applied%"));
+test("Boolean search uses the safe RPC, hydrates one bounded page, and preserves RPC order", async () => {
+  const mock = createQueryClient({
+    data: [{ job_id: "2" }, { job_id: "1" }],
+    rpc: (name) => name === "search_job_ids_v1"
+      ? [
+          { job_id: "1", total_count: 42, row_number: 1 },
+          { job_id: "2", total_count: 42, row_number: 2 },
+        ]
+      : [],
+  });
+  __setSupabaseClientFactoryForTests(async () => mock.client);
+  try {
+    const options = {
+      query: 'TPM AND (cloud OR "program manager") NOT sales',
+      page: 1,
+      pageSize: 25,
+    } as const;
+    const rows = await getNewJobs(options);
+    const count = await getAllActiveJobsCount(options);
+    assert.deepEqual(rows.map((row) => row.job_id), ["1", "2"]);
+    assert.equal(count, 42);
+    const rpcCalls = mock.calls.filter((call) => call.method === "rpc" && call.args[0] === "search_job_ids_v1");
+    assert.equal(rpcCalls.length, 1);
+    const params = rpcCalls[0].args[1] as Record<string, unknown>;
+    assert.equal(params.p_kind, "new");
+    assert.equal(params.p_limit, 25);
+    assert.equal(params.p_offset, 0);
+    assert.deepEqual(params.p_search_ast, {
+      type: "and",
+      children: [
+        { type: "term", term: "TPM" },
+        {
+          type: "or",
+          children: [
+            { type: "term", term: "cloud" },
+            { type: "term", term: "program manager" },
+          ],
+        },
+        { type: "term", term: "sales", negated: true },
+      ],
+    });
+    assert.ok(hasCall(mock.calls, "in", "job_id", ["1", "2"]));
+  } finally {
+    __resetSupabaseClientFactoryForTests();
+  }
+});
+
+test("malformed Boolean search fails before a database request", async () => {
+  const mock = createQueryClient();
+  __setSupabaseClientFactoryForTests(async () => mock.client);
+  try {
+    await assert.rejects(() => getNewJobs({ query: "cloud AND" }), /AND must be followed/);
+    assert.equal(mock.calls.length, 0);
+  } finally {
+    __resetSupabaseClientFactoryForTests();
+  }
+});
+
+test("Boolean search retains total count for an empty result page", async () => {
+  const mock = createQueryClient({
+    rpc: () => [{ job_id: null, total_count: 42, row_number: null }],
+  });
+  __setSupabaseClientFactoryForTests(async () => mock.client);
+  try {
+    const options = { query: '"program manager"', page: 99, pageSize: 25 } as const;
+    assert.deepEqual(await getNewJobs(options), []);
+    assert.equal(await getAllActiveJobsCount(options), 42);
+    assert.equal(mock.calls.filter((call) => call.method === "rpc").length, 1);
+  } finally {
+    __resetSupabaseClientFactoryForTests();
+  }
 });
 
 test("applied status supports every value and has an exact default", async () => {
