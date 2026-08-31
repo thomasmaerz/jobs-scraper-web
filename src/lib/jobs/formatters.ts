@@ -4,6 +4,36 @@ export function getExternalJobPostingId(job: Job): string {
   return job.latest_job_id || job.job_id;
 }
 
+export function getLatestPostedAt(job: Job): string | null {
+  if (job.effective_posted_at) return job.effective_posted_at;
+  const values = [job.posted_at, job.last_seen_posted_at].filter(
+    (value): value is string => Boolean(value),
+  );
+  return values.reduce<string | null>((latest, value) => {
+    if (!latest) return value;
+    return Date.parse(value) > Date.parse(latest) ? value : latest;
+  }, null);
+}
+
+export function getJobDisplayDate(job: Job): {
+  label: "Posted" | "Scraped";
+  value: string;
+} | null {
+  const postedAt = getLatestPostedAt(job);
+  if (postedAt) return { label: "Posted", value: postedAt };
+  if (job.scraped_at) return { label: "Scraped", value: job.scraped_at };
+  return null;
+}
+
+export function formatSourcePostedDate(value: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(value));
+}
+
 export function sanitizeExternalUrl(url: string | null | undefined): string | null {
   if (!url) return null;
 

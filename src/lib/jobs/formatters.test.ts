@@ -6,10 +6,68 @@ import {
   formatLevel,
   formatPostedRelative,
   formatRepostCount,
+  formatSourcePostedDate,
   formatArchetype,
   getLinkedInListingUrl,
+  getJobDisplayDate,
+  getLatestPostedAt,
   hasSpecifiedLevel,
 } from "./formatters.ts";
+import type { Job } from "../../types.ts";
+
+function jobWithDates(
+  postedAt: string | null,
+  lastSeenPostedAt: string | null,
+  effectivePostedAt?: string | null,
+): Job {
+  return {
+    posted_at: postedAt,
+    last_seen_posted_at: lastSeenPostedAt,
+    effective_posted_at: effectivePostedAt,
+  } as Job;
+}
+
+test("latest posted date prefers the newest canonical listing timestamp", () => {
+  assert.equal(
+    getLatestPostedAt(jobWithDates("2026-04-26", "2026-08-26")),
+    "2026-08-26",
+  );
+  assert.equal(
+    getLatestPostedAt(jobWithDates("2026-08-30", null)),
+    "2026-08-30",
+  );
+  assert.equal(
+    getLatestPostedAt(jobWithDates("2026-08-30", "2026-08-26")),
+    "2026-08-30",
+  );
+  assert.equal(
+    getLatestPostedAt(jobWithDates("2026-04-26", "2026-08-26", "2026-08-27")),
+    "2026-08-27",
+  );
+  assert.equal(getLatestPostedAt(jobWithDates(null, null)), null);
+});
+
+test("source posting dates retain their calendar day", () => {
+  assert.equal(formatSourcePostedDate("2026-08-30T00:00:00+00:00"), "Aug 30, 2026");
+  assert.equal(formatSourcePostedDate("2026-08-30"), "Aug 30, 2026");
+});
+
+test("job display dates preserve scraped fallback when posting time is unknown", () => {
+  assert.deepEqual(
+    getJobDisplayDate({
+      ...jobWithDates(null, null),
+      scraped_at: "2026-06-04T12:39:15Z",
+    }),
+    { label: "Scraped", value: "2026-06-04T12:39:15Z" },
+  );
+  assert.deepEqual(
+    getJobDisplayDate({
+      ...jobWithDates("2026-08-30", null),
+      scraped_at: "2026-08-31T12:00:00Z",
+    }),
+    { label: "Posted", value: "2026-08-30" },
+  );
+});
 
 test("builds safe LinkedIn listing URLs from source IDs", () => {
   assert.equal(

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import MarkdownRenderer from "./MarkdownRenderer";
 import ListingHistoryPanel from "./ListingHistoryPanel";
+import LocalDateTime from "./LocalDateTime";
 import { Job } from "@/types";
 import { useRouter, useSearchParams } from "next/navigation"; // Added useSearchParams
 import {
@@ -26,7 +27,9 @@ import {
   formatPostedRelative,
   formatRepostCount,
   formatSalary,
+  formatSourcePostedDate,
   getExternalJobUrl,
+  getJobDisplayDate,
   sanitizeExternalUrl,
 } from "@/lib/jobs/formatters";
 import {
@@ -454,37 +457,44 @@ export default function TopMatchesList({
                       </span>
                     </div>
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2 text-sm text-gray-600">
-                    {selectedJob.posted_relative_text && (
-                      <span>{formatPostedRelative(selectedJob.posted_relative_text)}</span>
-                    )}
-                    {selectedJob.applicant_count != null && (
-                      <span>{selectedJob.applicant_count} applicants</span>
-                    )}
-                    {selectedJobSalary && <span>{selectedJobSalary}</span>}
-                    {selectedJobRecruiters.length > 0 && (
-                      <span className="inline-flex flex-wrap gap-x-1">
-                        <span>{selectedJobRecruiters.length === 1 ? "Recruiter:" : "Recruiters:"}</span>
-                        {selectedJobRecruiters.map((recruiter, index) => {
-                          const profileUrl = sanitizeExternalUrl(recruiter.profileUrl);
-                          return (
-                            <span key={`${recruiter.name}-${index}`}>
-                              {index > 0 ? ", " : ""}
-                              {profileUrl ? (
-                                <a
-                                  href={profileUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="font-medium text-indigo-600 hover:text-indigo-800 hover:underline"
-                                >
-                                  {recruiter.name}
-                                </a>
-                              ) : (
-                                recruiter.name
-                              )}
-                            </span>
-                          );
-                        })}
+                  <div className="mt-3 flex items-start justify-between gap-3 text-sm text-gray-600">
+                    <div className="flex flex-wrap gap-2">
+                      {selectedJob.posted_relative_text && (
+                        <span>{formatPostedRelative(selectedJob.posted_relative_text)}</span>
+                      )}
+                      {selectedJob.applicant_count != null && (
+                        <span>{selectedJob.applicant_count} applicants</span>
+                      )}
+                      {selectedJobSalary && <span>{selectedJobSalary}</span>}
+                      {selectedJobRecruiters.length > 0 && (
+                        <span className="inline-flex flex-wrap gap-x-1">
+                          <span>{selectedJobRecruiters.length === 1 ? "Recruiter:" : "Recruiters:"}</span>
+                          {selectedJobRecruiters.map((recruiter, index) => {
+                            const profileUrl = sanitizeExternalUrl(recruiter.profileUrl);
+                            return (
+                              <span key={`${recruiter.name}-${index}`}>
+                                {index > 0 ? ", " : ""}
+                                {profileUrl ? (
+                                  <a
+                                    href={profileUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="font-medium text-indigo-600 hover:text-indigo-800 hover:underline"
+                                  >
+                                    {recruiter.name}
+                                  </a>
+                                ) : (
+                                  recruiter.name
+                                )}
+                              </span>
+                            );
+                          })}
+                        </span>
+                      )}
+                    </div>
+                    {selectedJob.scraped_at && (
+                      <span className="shrink-0 text-right text-xs text-gray-400">
+                        <LocalDateTime value={selectedJob.scraped_at} />
                       </span>
                     )}
                   </div>
@@ -605,9 +615,9 @@ export default function TopMatchesList({
                     Not Interested
                   </button>
                 </div>
-                {selectedJob.scraped_at && (
+                {getJobDisplayDate(selectedJob) && (
                   <span className="ml-auto text-xs text-gray-400 self-center">
-                    Scraped {new Date(selectedJob.scraped_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
+                    {getJobDisplayDate(selectedJob)!.label} {formatSourcePostedDate(getJobDisplayDate(selectedJob)!.value)}
                   </span>
                 )}
               </div>

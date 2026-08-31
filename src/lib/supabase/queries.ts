@@ -305,7 +305,7 @@ function applyJobPredicates(
   if (minSeenCount !== undefined) query = query.gte("seen_count", minSeenCount);
 
   const cutoff = datePostedCutoff(options.datePosted, options);
-  if (cutoff) query = query.gte("posted_at", cutoff);
+  if (cutoff) query = query.gte("effective_posted_at", cutoff);
 
   const search = sanitizeSearchTerm(options.query);
   if (search) {
@@ -321,13 +321,16 @@ function applyJobSort(query: any, kind: JobListKind, options: InternalJobListOpt
     ? requestedSort
     : DEFAULT_SORT[kind];
   const sortOrder: SortOrder = options.sortOrder === "asc" ? "asc" : "desc";
+  const orderColumn = sortBy === "posted_at" ? "effective_posted_at" : sortBy;
   const orderOptions: { ascending: boolean; nullsFirst?: boolean } = {
     ascending: sortOrder === "asc",
   };
-  if (sortBy === "salary_min") orderOptions.nullsFirst = false;
+  if (sortBy === "posted_at" || sortBy === "salary_min") {
+    orderOptions.nullsFirst = false;
+  }
 
   return query
-    .order(sortBy, orderOptions)
+    .order(orderColumn, orderOptions)
     .order("job_id", { ascending: true });
 }
 

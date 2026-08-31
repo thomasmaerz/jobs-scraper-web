@@ -156,7 +156,10 @@ test("all jobs has no implicit active, state, status, interest, score, or filter
 
   assert.deepEqual(predicates(calls), []);
   assert.deepEqual(calls.filter((call) => call.method === "order"), [
-    { method: "order", args: ["posted_at", { ascending: false }] },
+    {
+      method: "order",
+      args: ["effective_posted_at", { ascending: false, nullsFirst: false }],
+    },
     { method: "order", args: ["job_id", { ascending: true }] },
   ]);
 });
@@ -234,7 +237,9 @@ test("date-posted and safe text filters are bounded and sanitized", async () => 
   for (const [datePosted, hours] of [["24h", 24], ["7d", 168], ["30d", 720]] as const) {
     const now = Date.now();
     const calls = await rowCalls(getNewJobs, { datePosted });
-    const cutoff = calls.find((call) => call.method === "gte" && call.args[0] === "posted_at")?.args[1];
+    const cutoff = calls.find(
+      (call) => call.method === "gte" && call.args[0] === "effective_posted_at",
+    )?.args[1];
     assert.equal(typeof cutoff, "string");
     const age = now - Date.parse(cutoff as string);
     assert.ok(age >= hours * 3_600_000 && age < hours * 3_600_000 + 61_000, datePosted);
@@ -268,8 +273,9 @@ test("sort fields and orders are allowlisted per job list", async () => {
           sortBy: requested as SortField,
           sortOrder: order,
         });
-        const expected = config.allowed.includes(requested as never) ? requested : config.fallback;
-        const options = expected === "salary_min"
+        const selectedSort = config.allowed.includes(requested as never) ? requested : config.fallback;
+        const expected = selectedSort === "posted_at" ? "effective_posted_at" : selectedSort;
+        const options = selectedSort === "posted_at" || selectedSort === "salary_min"
           ? { ascending: order === "asc", nullsFirst: false }
           : { ascending: order === "asc" };
         assert.deepEqual(calls.filter((call) => call.method === "order"), [
@@ -281,6 +287,32 @@ test("sort fields and orders are allowlisted per job list", async () => {
     const invalidOrder = await rowCalls(config.rows, { sortOrder: "sideways" as SortOrder });
     assert.deepEqual(invalidOrder.find((call) => call.method === "order")?.args[1], { ascending: false });
   }
+});
+
+test("posted-date sorting uses the latest source posting and keeps unknown dates last", async () => {
+  const descending = await rowCalls(getNewJobs, {
+    sortBy: "posted_at",
+    sortOrder: "desc",
+  });
+  assert.deepEqual(descending.filter((call) => call.method === "order"), [
+    {
+      method: "order",
+      args: ["effective_posted_at", { ascending: false, nullsFirst: false }],
+    },
+    { method: "order", args: ["job_id", { ascending: true }] },
+  ]);
+
+  const ascending = await rowCalls(getNewJobs, {
+    sortBy: "posted_at",
+    sortOrder: "asc",
+  });
+  assert.deepEqual(ascending.filter((call) => call.method === "order"), [
+    {
+      method: "order",
+      args: ["effective_posted_at", { ascending: true, nullsFirst: false }],
+    },
+    { method: "order", args: ["job_id", { ascending: true }] },
+  ]);
 });
 
 test("salary sorting excludes implausible parser outliers", async () => {

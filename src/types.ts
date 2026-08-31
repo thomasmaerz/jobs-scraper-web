@@ -74,6 +74,7 @@ export interface Job {
   provider: string | null;
   posted_at: string | null;
   last_seen_posted_at: string | null;
+  effective_posted_at?: string | null;
   posted_relative_text: string | null;
   applicant_count: number | null;
   salary_text: string | null;

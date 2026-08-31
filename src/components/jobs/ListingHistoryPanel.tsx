@@ -1,14 +1,10 @@
 import type { Job, ListingInstance } from "@/types";
 import { getDistinctListingLocations, getPostingWaveGroups } from "@/lib/jobs/repost";
-import { getLinkedInListingUrl } from "@/lib/jobs/formatters";
+import { formatSourcePostedDate, getLinkedInListingUrl } from "@/lib/jobs/formatters";
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return "—";
-  return new Date(value).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+  return formatSourcePostedDate(value);
 }
 
 function variantLabel(instance: ListingInstance): string {
