@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 
-import { AuthenticationError, requireAdmin } from "@/lib/auth/admin";
 import { getScraperConfiguration, replaceScraperConfiguration } from "@/lib/config/repository";
 import { ConfigurationValidationError, validateConfiguration } from "@/lib/config/validation";
 import { ConfigurationConflictError } from "@/lib/config/conflict";
@@ -8,12 +7,6 @@ import { ConfigurationConflictError } from "@/lib/config/conflict";
 export const dynamic = "force-dynamic";
 
 function errorResponse(error: unknown) {
-  if (error instanceof AuthenticationError) {
-    return NextResponse.json(
-      { error: error.message, code: error.code },
-      { status: error.status, headers: { "Cache-Control": "no-store, private" } },
-    );
-  }
   if (error instanceof ConfigurationValidationError) {
     return NextResponse.json({ error: "Invalid configuration", issues: error.issues }, { status: 400 });
   }
@@ -30,9 +23,13 @@ function errorResponse(error: unknown) {
   );
 }
 
+function isSameOrigin(request: Request): boolean {
+  const origin = request.headers.get("origin");
+  return !origin || origin === new URL(request.url).origin;
+}
+
 export async function GET() {
   try {
-    await requireAdmin();
     const configuration = await getScraperConfiguration();
     return NextResponse.json({ data: configuration }, {
       headers: { "Cache-Control": "no-store, private" },
@@ -44,15 +41,22 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
-    const actor = await requireAdmin();
+    if (!isSameOrigin(request)) {
+      return NextResponse.json(
+        { error: "Cross-origin configuration updates are not allowed" },
+        { status: 403, headers: { "Cache-Control": "no-store, private" } },
+      );
+    }
     const contentType = request.headers.get("content-type") ?? "";
     if (!contentType.toLowerCase().includes("application/json")) {
       return NextResponse.json({ error: "Content-Type must be application/json" }, { status: 415 });
     }
     const raw: unknown = await request.json();
     const configuration = validateConfiguration(raw);
-    const saved = await replaceScraperConfiguration(configuration, actor);
-    return NextResponse.json({ data: saved });
+    const saved = await replaceScraperConfiguration(configuration);
+    return NextResponse.json({ data: saved }, {
+      headers: { "Cache-Control": "no-store, private" },
+    });
   } catch (error) {
     return errorResponse(error);
   }

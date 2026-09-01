@@ -25,7 +25,7 @@ Job Scraper Web is the control center for a lane-aware job search. Review canoni
 
 Each enabled lane displays independent resume readiness. `Resume ready` means an enabled `archetype_resume_profiles` row resolves to a base resume. `Scrape only · resume missing` is intentional: scraping remains enabled, while resume-dependent workers such as scoring and resume generation skip that lane. The lane migration safely seeds or refreshes `technology_delivery` from the latest existing `base_resume`; it does not invent profiles for other lanes.
 
-The authenticated `/config` page manages the database-backed career lanes and scrape settings. This repository does not currently include a sign-in page; the deployment must establish a Supabase Auth browser session before `/config` can load. An account is treated as an administrator when its Supabase `app_metadata` contains `admin: true` or `role: "admin"`, or when its email is listed in the server-only `ADMIN_EMAILS` environment variable (comma-separated). The page shows setup guidance for missing sessions and authorization.
+The `/config` page manages the database-backed career lanes and scrape settings without application authentication. This is an intentional convenience for the current trusted-LAN deployment: anyone who can reach the web app can read and change scraper configuration. Keep the app behind a host firewall or reverse-proxy network allowlist, validate the public host at the proxy, and restore authentication before exposing it beyond the trusted LAN. Configuration writes reject cross-origin browser requests and require JSON, but network isolation remains the primary access boundary.
 
 `SUPABASE_SERVICE_ROLE_KEY` must remain server-only. The scraper reads configuration through the service-role-only `get_scraper_configuration()` RPC and records query provenance through the service-role-only `record_job_archetype_membership(...)` RPC; browser code never receives that key. Apply migrations through the normal deployment workflow before opening `/config`.
 
@@ -59,7 +59,6 @@ Add these values to `.env.local` before starting:
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-publishable-or-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-ADMIN_EMAILS=you@example.com
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` is server-only. Never prefix it with `NEXT_PUBLIC_`. Apply `supabase/migrations` in order through the normal Supabase deployment workflow before opening `/config`.

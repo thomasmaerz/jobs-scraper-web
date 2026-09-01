@@ -209,18 +209,16 @@ export default function ConfigClient() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [accessCode, setAccessCode] = useState("");
   const [success, setSuccess] = useState("");
   const [conflicted, setConflicted] = useState(false);
   const dirty = useMemo(() => Boolean(config && JSON.stringify(config) !== baseline), [config, baseline]);
 
   const load = useCallback(async () => {
-    setLoading(true); setError(""); setAccessCode(""); setSuccess(""); setConflicted(false);
+    setLoading(true); setError(""); setSuccess(""); setConflicted(false);
     try {
       const response = await fetch("/api/config", { cache: "no-store" });
       const body = await response.json();
       if (!response.ok) {
-        setAccessCode(typeof body.code === "string" ? body.code : "");
         throw new Error(body.error ?? "Could not load configuration");
       }
       setConfig(body.data); setBaseline(JSON.stringify(body.data));
@@ -251,28 +249,16 @@ export default function ConfigClient() {
 
   if (loading) return <div className="grid min-h-[60vh] place-items-center"><div className="text-center"><Loader2 className="mx-auto animate-spin text-indigo-600" size={30} /><p className="mt-3 text-sm text-slate-500">Loading scraper configuration…</p></div></div>;
   if (!config) {
-    const accessProblem = ["AUTH_NOT_CONFIGURED", "AUTHENTICATION_REQUIRED", "ADMIN_REQUIRED"].includes(accessCode);
     return (
       <div className="mx-auto mt-12 max-w-2xl rounded-3xl border border-amber-200 bg-white p-7 shadow-sm sm:p-9">
         <div className="flex items-start gap-4">
           <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-amber-100 text-amber-700"><AlertCircle size={24} /></span>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">{accessProblem ? "Administrator access required" : "Configuration unavailable"}</h1>
+            <h1 className="text-xl font-bold text-slate-900">Configuration unavailable</h1>
             <p className="mt-2 text-sm text-slate-600">{error}</p>
           </div>
         </div>
-        {accessProblem && (
-          <div className="mt-6 rounded-2xl bg-slate-50 p-5 text-sm leading-6 text-slate-700">
-            <p className="font-semibold text-slate-900">This application does not currently provide a sign-in screen.</p>
-            <ol className="mt-2 list-decimal space-y-1 pl-5">
-              <li>Configure Supabase Auth and establish an authenticated browser session through your deployment&apos;s auth flow.</li>
-              <li>Set the user&apos;s Supabase <code className="rounded bg-slate-200 px-1">app_metadata.admin</code> to <code className="rounded bg-slate-200 px-1">true</code>, set <code className="rounded bg-slate-200 px-1">app_metadata.role</code> to <code className="rounded bg-slate-200 px-1">admin</code>, or add the email to server-only <code className="rounded bg-slate-200 px-1">ADMIN_EMAILS</code>.</li>
-              <li>Keep <code className="rounded bg-slate-200 px-1">SUPABASE_SERVICE_ROLE_KEY</code> server-only, then reload this page.</li>
-            </ol>
-            {accessCode === "ADMIN_REQUIRED" && <p className="mt-3 font-medium text-amber-800">Your session is valid, but the current user is not configured as an administrator.</p>}
-          </div>
-        )}
-        <button onClick={() => void load()} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-800"><RefreshCw size={16} /> Check access again</button>
+        <button onClick={() => void load()} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-800"><RefreshCw size={16} /> Try again</button>
       </div>
     );
   }
@@ -283,7 +269,7 @@ export default function ConfigClient() {
     <div className="mx-auto max-w-6xl pb-28 pt-4">
       <div className="overflow-hidden rounded-3xl bg-slate-950 px-6 py-8 text-white shadow-xl sm:px-9">
         <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-          <div><div className="mb-4 inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-3 py-1.5 text-xs font-bold text-indigo-200"><Database size={14} /> Database-backed · revision {config.revision ?? "—"}</div><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Scraper configuration</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Control discovery, classification, geography, and scrape limits for all six career lanes. Legacy <code className="rounded bg-white/10 px-1.5 py-0.5">software_tpm</code> jobs remain compatible with Technology Delivery.</p></div>
+          <div><div className="mb-4 inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-3 py-1.5 text-xs font-bold text-indigo-200"><Database size={14} /> Database-backed · LAN access · revision {config.revision ?? "—"}</div><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Scraper configuration</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Control discovery, classification, geography, and scrape limits for all six career lanes. Legacy <code className="rounded bg-white/10 px-1.5 py-0.5">software_tpm</code> jobs remain compatible with Technology Delivery.</p></div>
           <div className="grid grid-cols-2 gap-2 text-center"><div className="rounded-2xl bg-white/5 px-5 py-3"><div className="text-2xl font-bold">{config.lanes.filter((lane) => lane.enabled).length}</div><div className="text-[11px] uppercase tracking-wider text-slate-400">Active lanes</div></div><div className="rounded-2xl bg-white/5 px-5 py-3"><div className="text-2xl font-bold">{config.lanes.flatMap((lane) => lane.queries).filter((query) => query.enabled).length}</div><div className="text-[11px] uppercase tracking-wider text-slate-400">Searches</div></div></div>
         </div>
       </div>

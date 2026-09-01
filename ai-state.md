@@ -31,7 +31,8 @@ Provide the database schema and web control center for configurable career lanes
 
 ## Security
 
-- Configuration API requires a valid Supabase user and admin app metadata or an email in server-only `ADMIN_EMAILS`.
+- Configuration API is intentionally unauthenticated for the trusted-LAN deployment; anyone with network access to the app can modify scraper configuration.
+- Same-origin checks and JSON-only writes reduce browser-borne cross-origin update risk, but authentication must be restored before broader exposure.
 - Service role is used only by server modules and protected RPCs.
 - Configuration tables use RLS and revoke direct browser access.
 - Score and resume workers use separate owner-checked leases with expiry recovery.
@@ -44,7 +45,7 @@ Untracked `.superpowers/` and `docs/superpowers/screenshots/` are outside the in
 ## Rollout
 
 1. Review and apply `202609010001_configurable_career_lanes.sql` through the normal deployment workflow.
-2. Configure Supabase Auth administration for `/config`.
+2. Restrict `/config` to the trusted LAN with a host firewall or reverse-proxy allowlist and host validation.
 3. Review seeded searches/filters and enable desired geographies.
 4. Provision base resume profiles for lanes that should be scored or customized.
 5. Run manual samples and tune precision before broad scheduled coverage.
