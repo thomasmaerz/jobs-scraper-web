@@ -13,6 +13,7 @@ import {
   Menu,
   X,
   BarChart2,
+  Settings,
 } from "lucide-react";
 
 export default function Navbar() {
@@ -48,6 +49,7 @@ export default function Navbar() {
     { href: "/jobs/new", icon: <Zap size={18} />, text: "New" },
     { href: "/jobs/applied", icon: <CheckSquare size={18} />, text: "Applied" },
     { href: "/insights", icon: <BarChart2 size={18} />, text: "Insights" },
+    { href: "/config", icon: <Settings size={18} />, text: "Config" },
     { href: "/profile", icon: <User size={18} />, text: "Profile" },
   ];
 

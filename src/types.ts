@@ -66,7 +66,7 @@ export interface Job {
   scraped_at: string | null;
   last_checked: string | null;
   job_state: string | null;
-  resume_score_stage: string;
+  resume_score_stage: string | null;
   is_interested: boolean | null;
   customized_resume_id: string | null;
   customized_resumes?: Pick<Resume, "resume_link"> | null;

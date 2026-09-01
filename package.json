@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test"
+    "test": "node --experimental-strip-types --test --test-concurrency=1"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",

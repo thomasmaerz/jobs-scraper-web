@@ -96,7 +96,9 @@ test("unspecified seniority can be omitted without hiding real levels", () => {
 });
 
 test("archetype labels are human readable", () => {
-  assert.equal(formatArchetype("software_tpm"), "Software TPM");
+  assert.equal(formatArchetype("software_tpm"), "Technology Delivery");
+  assert.equal(formatArchetype("technology_delivery"), "Technology Delivery");
+  assert.equal(formatArchetype("network_infrastructure"), "Network Infrastructure");
   assert.equal(formatArchetype("data_pm"), "data pm");
 });
 

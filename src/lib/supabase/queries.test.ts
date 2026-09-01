@@ -150,6 +150,48 @@ test("all, new, top, and applied row/count queries keep every predicate in parit
   }
 });
 
+test("lane-filtered normal list and count use canonical membership IDs without relation duplication", async () => {
+  const rpcRows = [
+    { job_id: "job-1", total_count: 2, row_number: 1 },
+    { job_id: "job-2", total_count: 2, row_number: 2 },
+  ];
+  const mock = createQueryClient({
+    data: [{ job_id: "job-1" }, { job_id: "job-2" }],
+    rpc: (name) => {
+      if (name === "get_job_ids_by_membership_v1") return rpcRows;
+      assert.equal(name, "get_job_membership_projection_v1");
+      return ["job-1", "job-2"].map((job_id) => ({
+        job_id,
+        archetype: "technology_delivery",
+        resume_score: 75,
+        resume_score_stage: "initial",
+        is_filtered: false,
+        filter_reason: null,
+        customized_resume_id: null,
+        resume_link: null,
+      }));
+    },
+  });
+  __setSupabaseClientFactoryForTests(async () => mock.client);
+
+  const rows = await getNewJobs({ archetype: ["software_tpm", "data_pm"], page: 1, pageSize: 25 });
+  assert.deepEqual(rows.map((row) => row.job_id), ["job-1", "job-2"]);
+  const rpc = mock.calls.find((call) => call.method === "rpc" && call.args[0] === "get_job_ids_by_membership_v1");
+  assert.deepEqual((rpc?.args[1] as any).p_archetypes, ["technology_delivery", "software_tpm", "data_pm"]);
+  assert.equal(mock.calls.filter((call) => call.method === "in" && call.args[0] === "job_id").length, 1);
+});
+
+test("membership RPC count and list retain exact parity when one job matches multiple lanes", async () => {
+  const clients = [
+    createQueryClient({ data: [{ job_id: "job-1" }], rpc: () => [{ job_id: "job-1", total_count: 1, row_number: 1 }] }).client,
+    createQueryClient({ rpc: () => [{ job_id: "job-1", total_count: 1, row_number: 1 }] }).client,
+  ];
+  __setSupabaseClientFactoryForTests(async () => clients.shift());
+  const options = { archetype: ["technology_delivery", "data_pm"], page: 1, pageSize: 25 };
+  assert.equal((await getNewJobs(options)).length, 1);
+  assert.equal(await getAllActiveJobsCount(options), 1);
+});
+
 test("all jobs has no implicit active, state, status, interest, score, or filtered predicates", async () => {
   const calls = await rowCalls(getAllJobs);
 
@@ -176,7 +218,7 @@ test("job-list filters emit their individual Supabase predicates", async () => {
     { name: "minimum score", options: { minScore: 17 }, expected: { method: "gte", args: ["resume_score", 17] } },
     { name: "maximum score", options: { maxScore: 83 }, expected: { method: "lte", args: ["resume_score", 83] } },
     { name: "repeated levels", options: { level: ["Entry level", "Director"] }, expected: { method: "in", args: ["level", ["Entry level", "Director"]] } },
-    { name: "repeated archetypes", options: { archetype: ["software_tpm", "data_pm"] }, expected: { method: "in", args: ["archetype", ["software_tpm", "data_pm"]] } },
+    { name: "repeated archetypes", options: { archetype: ["software_tpm", "data_pm"] }, expected: { method: "rpc", args: ["get_job_ids_by_membership_v1"] } },
     { name: "has salary", options: { hasSalary: true }, expected: { method: "not", args: ["salary_min", "is", null] } },
     { name: "salary minimum", options: { hasSalary: true, salaryMin: 90000 }, expected: { method: "gte", args: ["salary_min", 90000] } },
     { name: "salary maximum", options: { hasSalary: true, salaryMax: 180000 }, expected: { method: "lte", args: ["salary_min", 180000] } },
@@ -189,7 +231,12 @@ test("job-list filters emit their individual Supabase predicates", async () => {
 
   for (const item of cases) {
     const calls = await rowCalls(getNewJobs, item.options);
-    assert.ok(hasCall(calls, item.expected.method, ...item.expected.args), item.name);
+    assert.ok(
+      item.expected.method === "rpc"
+        ? calls.some((call) => call.method === "rpc" && call.args[0] === item.expected.args[0])
+        : hasCall(calls, item.expected.method, ...item.expected.args),
+      item.name,
+    );
   }
 
   const noSalary = await rowCalls(getNewJobs, { salaryMin: 90000, salaryMax: 180000 });
@@ -292,6 +339,64 @@ test("Boolean search uses the safe RPC, hydrates one bounded page, and preserves
   }
 });
 
+test("Boolean lane search forwards memberships for exact count and deep-page list parity", async () => {
+  const hydrated = {
+    job_id: "job-501",
+    archetype: "technology_delivery",
+    resume_score: 11,
+    resume_score_stage: "initial",
+    is_filtered: false,
+    filter_reason: null,
+    customized_resume_id: null,
+  };
+  const mock = createQueryClient({
+    data: [hydrated],
+    rpc: (name, params) => {
+      if (name === "search_job_ids_v1") {
+        return [{ job_id: "job-501", total_count: 777, row_number: 501 }];
+      }
+      if (name === "get_job_membership_projection_v1") {
+        return [{
+          job_id: "job-501",
+          archetype: "network_infrastructure",
+          resume_score: 91,
+          resume_score_stage: "custom",
+          is_filtered: false,
+          filter_reason: null,
+          customized_resume_id: "resume-network",
+          resume_link: "network.pdf",
+        }];
+      }
+      return [];
+    },
+  });
+  __setSupabaseClientFactoryForTests(async () => mock.client);
+  const options: JobListQueryOptions = {
+    query: "cloud AND delivery",
+    archetype: ["software_tpm", "network_infrastructure"],
+    page: 21,
+    pageSize: 25,
+  };
+  const rows = await getNewJobs(options);
+  assert.deepEqual(rows.map((job) => job.job_id), ["job-501"]);
+  assert.equal(rows[0].archetype, "network_infrastructure");
+  assert.equal(rows[0].resume_score, 91);
+  assert.equal(rows[0].resume_score_stage, "custom");
+  assert.equal(rows[0].customized_resume_id, "resume-network");
+  assert.equal(rows[0].resume_link, "network.pdf");
+  const projectionCall = mock.calls.find(
+    (call) => call.method === "rpc" && call.args[0] === "get_job_membership_projection_v1",
+  );
+  assert.deepEqual((projectionCall?.args[1] as any).p_archetypes, [
+    "technology_delivery", "software_tpm", "network_infrastructure",
+  ]);
+  assert.equal((projectionCall?.args[1] as any).p_min_score, 0);
+  assert.equal(await getAllActiveJobsCount(options), 777);
+  const params = mock.calls.find((call) => call.method === "rpc")?.args[1] as any;
+  assert.equal(params.p_offset, 500);
+  assert.deepEqual(params.p_archetypes, ["technology_delivery", "software_tpm", "network_infrastructure"]);
+});
+
 test("malformed Boolean search fails before a database request", async () => {
   const mock = createQueryClient();
   __setSupabaseClientFactoryForTests(async () => mock.client);
@@ -316,6 +421,18 @@ test("Boolean search retains total count for an empty result page", async () => 
   } finally {
     __resetSupabaseClientFactoryForTests();
   }
+});
+
+test("membership list/count retains total count for an empty deep page", async () => {
+  const mock = createQueryClient({
+    rpc: (name) => name === "get_job_ids_by_membership_v1"
+      ? [{ job_id: null as unknown as string, total_count: 12, row_number: null as unknown as number }]
+      : [],
+  });
+  __setSupabaseClientFactoryForTests(async () => mock.client);
+  const options = { archetype: ["data_pm"], page: 99, pageSize: 25 };
+  assert.deepEqual(await getNewJobs(options), []);
+  assert.equal(await getAllActiveJobsCount(options), 12);
 });
 
 test("applied status supports every value and has an exact default", async () => {
@@ -354,7 +471,10 @@ test("sort fields and orders are allowlisted per job list", async () => {
       }
     }
     const invalidOrder = await rowCalls(config.rows, { sortOrder: "sideways" as SortOrder });
-    assert.deepEqual(invalidOrder.find((call) => call.method === "order")?.args[1], { ascending: false });
+    const fallbackOptions = config.fallback === "posted_at"
+      ? { ascending: false, nullsFirst: false }
+      : { ascending: false };
+    assert.deepEqual(invalidOrder.find((call) => call.method === "order")?.args[1], fallbackOptions);
   }
 });
 
@@ -441,6 +561,22 @@ test("job keyword insights select the complete confirmed row and use determinist
     { method: "from", args: ["job_keyword_insights"] },
     { method: "select", args: ["job_id, keyword, category, analyzed_at, archetype, provider"] },
     { method: "eq", args: ["job_id", "job-1"] },
+    { method: "order", args: ["category", { ascending: true }] },
+    { method: "order", args: ["keyword", { ascending: true }] },
+  ]);
+});
+
+test("job keyword insights filter canonical and compatible explicit archetype context", async () => {
+  const mock = createQueryClient();
+  __setSupabaseClientFactoryForTests(async () => mock.client);
+
+  await getJobKeywordInsights("job-1", "software_tpm");
+
+  assert.deepEqual(mock.calls, [
+    { method: "from", args: ["job_keyword_insights"] },
+    { method: "select", args: ["job_id, keyword, category, analyzed_at, archetype, provider"] },
+    { method: "eq", args: ["job_id", "job-1"] },
+    { method: "in", args: ["archetype", ["technology_delivery", "software_tpm"]] },
     { method: "order", args: ["category", { ascending: true }] },
     { method: "order", args: ["keyword", { ascending: true }] },
   ]);

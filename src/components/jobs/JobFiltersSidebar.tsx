@@ -20,6 +20,7 @@ import {
   resetResultPosition,
   setRepeatedParam,
 } from "@/lib/filters/searchParams";
+import { CANONICAL_ARCHETYPES } from "@/lib/archetypes/registry";
 
 export interface JobFiltersSidebarProps {
   supportedFilters: readonly FilterId[];
@@ -102,7 +103,7 @@ export default function JobFiltersSidebar({
     [knownArchetypes, paramsKey]
   );
   const archetypes = useMemo(
-    () => Array.from(new Set(["software_tpm", ...knownArchetypes])),
+    () => Array.from(new Set([...CANONICAL_ARCHETYPES, ...knownArchetypes])),
     [knownArchetypes]
   );
 

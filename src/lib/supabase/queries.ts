@@ -13,6 +13,7 @@ import type {
   SortOrder,
 } from "../filters/types.ts";
 import { parseBooleanSearch, type BooleanSearchNode } from "../jobs/booleanSearch.ts";
+import { compatibleArchetypeValues } from "../archetypes/registry.ts";
 
 if (!process.env.NODE_TEST_CONTEXT) {
   await import("server-only");
@@ -238,7 +239,9 @@ function applyJobPredicates(
   if (maxScore !== undefined) query = query.lte("resume_score", maxScore);
   if (options.provider) query = query.eq("provider", options.provider);
   if (options.level?.length) query = query.in("level", options.level);
-  if (options.archetype?.length) query = query.in("archetype", options.archetype);
+  if (options.archetype?.length) {
+    query = query.in("archetype", compatibleArchetypeValues(options.archetype));
+  }
   if (options.province?.length && options.locationScope?.length) {
     const regionalScopes = options.locationScope.filter(
       (scope) => scope !== "country",
@@ -307,12 +310,121 @@ type BooleanSearchPage = {
   totalCount: number;
 };
 
+type JobMembershipProjection = {
+  job_id: string;
+  archetype: string;
+  resume_score: number | null;
+  resume_score_stage: string | null;
+  is_filtered: boolean;
+  filter_reason: string | null;
+  customized_resume_id: string | null;
+  resume_link: string | null;
+};
+
+function overlayMembership(job: Job, membership: JobMembershipProjection): Job {
+  return {
+    ...job,
+    archetype: membership.archetype,
+    resume_score: membership.resume_score,
+    resume_score_stage: membership.resume_score_stage,
+    is_filtered: membership.is_filtered,
+    filter_reason: membership.filter_reason,
+    customized_resume_id: membership.customized_resume_id,
+    customized_resumes: membership.resume_link
+      ? { resume_link: membership.resume_link }
+      : null,
+    resume_link: membership.resume_link,
+  };
+}
+
+async function getMembershipProjections(
+  supabase: any,
+  jobIds: string[],
+  kind: JobListKind,
+  options: InternalJobListOptions,
+): Promise<Map<string, JobMembershipProjection>> {
+  const projections = new Map<string, JobMembershipProjection>();
+  const archetypes = options.archetype?.length
+    ? compatibleArchetypeValues(options.archetype)
+    : [];
+  if (!jobIds.length || !archetypes.length) return projections;
+  const scores = scoreBounds(kind, options);
+  for (let start = 0; start < jobIds.length; start += 500) {
+    const response = await supabase.rpc("get_job_membership_projection_v1", {
+      p_job_ids: jobIds.slice(start, start + 500),
+      p_archetypes: archetypes,
+      p_kind: kind,
+      p_filter_status: options.filterStatus ?? null,
+      p_min_score: scores.minScore ?? null,
+      p_max_score: scores.maxScore ?? null,
+    });
+    const rows = ((await handleResponse(response)) ?? []) as JobMembershipProjection[];
+    for (const row of rows) projections.set(row.job_id, row);
+  }
+  return projections;
+}
+
 function scoreBounds(kind: JobListKind, options: InternalJobListOptions) {
   const useDefaults = options.filterStatus !== "entry_level";
   return {
     minScore: finiteNumber(options.minScore) ?? (useDefaults ? (kind === "top" ? 50 : kind === "new" ? 0 : undefined) : undefined),
     maxScore: finiteNumber(options.maxScore) ?? (useDefaults && (kind === "new" || kind === "top") ? 100 : undefined),
   };
+}
+
+function jobIdRpcParams(kind: JobListKind, options: InternalJobListOptions) {
+  const requestedSort = options.sortBy;
+  const sortBy = requestedSort && JOB_SORT_FIELDS[kind].includes(requestedSort)
+    ? requestedSort
+    : DEFAULT_SORT[kind];
+  const scores = scoreBounds(kind, options);
+  return {
+    p_kind: kind,
+    p_provider: options.provider ?? null,
+    p_levels: options.level?.length ? options.level : null,
+    p_archetypes: options.archetype?.length ? compatibleArchetypeValues(options.archetype) : null,
+    p_interest: options.interest === true ? "true" : options.interest === false ? "false" : options.interest,
+    p_application_status: options.applicationStatus ?? null,
+    p_filter_status: options.filterStatus ?? null,
+    p_min_score: scores.minScore ?? null,
+    p_max_score: scores.maxScore ?? null,
+    p_provinces: options.province?.length ? options.province : null,
+    p_location_scopes: options.locationScope?.length ? options.locationScope : null,
+    p_exclude_metros: options.excludeMetro?.length ? options.excludeMetro : null,
+    p_has_salary: options.hasSalary === true,
+    p_salary_min: finiteNumber(options.salaryMin) ?? null,
+    p_salary_max: finiteNumber(options.salaryMax) ?? null,
+    p_min_repost_count: finiteNumber(options.minRepostCount) ?? null,
+    p_min_seen_count: finiteNumber(options.minSeenCount) ?? null,
+    p_posted_after: datePostedCutoff(options.datePosted, options) ?? null,
+    p_sort_by: sortBy,
+    p_sort_order: options.sortOrder === "asc" ? "asc" : "desc",
+  };
+}
+
+async function getMembershipJobPage(
+  supabase: any,
+  kind: JobListKind,
+  options: InternalJobListOptions,
+  countOnly = false,
+): Promise<BooleanSearchPage> {
+  const range = countOnly ? null : pageRange(options);
+  const jobIds: string[] = [];
+  let totalCount = 0;
+  let offset = countOnly ? 0 : (range?.from ?? 0);
+  do {
+    const limit = countOnly ? 1 : (range ? range.to - range.from + 1 : 500);
+    const response = await supabase.rpc("get_job_ids_by_membership_v1", {
+      ...jobIdRpcParams(kind, options), p_limit: limit, p_offset: offset,
+    });
+    const rows = ((await handleResponse(response)) ?? []) as Array<{ job_id: string | null; total_count: number | string }>;
+    if (rows.length) totalCount = Number(rows[0].total_count);
+    const batch = rows.flatMap((row) => typeof row.job_id === "string" ? [row.job_id] : []);
+    jobIds.push(...batch);
+    offset += batch.length;
+    if (countOnly || range || batch.length < limit || offset >= totalCount) break;
+  } while (true);
+  return { jobIds, totalCount };
 }
 
 function booleanSearchAst(query: string | undefined): BooleanSearchNode | null {
@@ -340,39 +452,19 @@ async function getBooleanSearchPage(
     const range = pageRange(options);
     const requestedLimit = range ? range.to - range.from + 1 : null;
     const requestedOffset = range?.from ?? 0;
-    const requestedSort = options.sortBy;
-    const sortBy = requestedSort && JOB_SORT_FIELDS[kind].includes(requestedSort)
-      ? requestedSort
-      : DEFAULT_SORT[kind];
-    const scores = scoreBounds(kind, options);
     const baseParams = {
       p_search_ast: ast,
-      p_kind: kind,
-      p_provider: options.provider ?? null,
-      p_levels: options.level?.length ? options.level : null,
-      p_archetypes: options.archetype?.length ? options.archetype : null,
-      p_interest: options.interest === true ? "true" : options.interest === false ? "false" : options.interest,
-      p_application_status: options.applicationStatus ?? null,
-      p_filter_status: options.filterStatus ?? null,
-      p_min_score: scores.minScore ?? null,
-      p_max_score: scores.maxScore ?? null,
-      p_provinces: options.province?.length ? options.province : null,
-      p_location_scopes: options.locationScope?.length ? options.locationScope : null,
-      p_exclude_metros: options.excludeMetro?.length ? options.excludeMetro : null,
-      p_has_salary: options.hasSalary === true,
-      p_salary_min: finiteNumber(options.salaryMin) ?? null,
-      p_salary_max: finiteNumber(options.salaryMax) ?? null,
-      p_min_repost_count: finiteNumber(options.minRepostCount) ?? null,
-      p_min_seen_count: finiteNumber(options.minSeenCount) ?? null,
-      p_posted_after: datePostedCutoff(options.datePosted, options) ?? null,
-      p_sort_by: sortBy,
-      p_sort_order: options.sortOrder === "asc" ? "asc" : "desc",
+      ...jobIdRpcParams(kind, options),
     };
     const jobIds: string[] = [];
     let totalCount = 0;
     let offset = requestedOffset;
     do {
-      const limit = Math.min(requestedLimit ?? 1000, 1000);
+      const remaining = requestedLimit === null
+        ? 1000
+        : requestedLimit - jobIds.length;
+      const limit = Math.min(remaining, 1000);
+      if (limit <= 0) break;
       const response = await supabase.rpc("search_job_ids_v1", {
         ...baseParams,
         p_limit: limit,
@@ -384,7 +476,7 @@ async function getBooleanSearchPage(
       const batch = rows.flatMap((row) => typeof row.job_id === "string" ? [row.job_id] : []);
       jobIds.push(...batch);
       offset += batch.length;
-      if (requestedLimit !== null || batch.length < limit || offset >= totalCount) break;
+      if ((requestedLimit !== null && jobIds.length >= requestedLimit) || batch.length < limit || offset >= totalCount) break;
     } while (true);
     return { jobIds, totalCount };
   })();
@@ -414,15 +506,29 @@ function applyJobSort(query: any, kind: JobListKind, options: InternalJobListOpt
 async function getJobRows(kind: JobListKind, options: InternalJobListOptions): Promise<Job[]> {
   const supabase = await supabaseClientFactory();
   const ast = booleanSearchAst(options.query);
-  if (ast) {
-    const search = await getBooleanSearchPage(supabase, kind, options, ast);
+  if (ast || options.archetype?.length) {
+    const search = ast
+      ? await getBooleanSearchPage(supabase, kind, options, ast)
+      : await getMembershipJobPage(supabase, kind, options);
     if (!search.jobIds.length) return [];
+    const memberships = await getMembershipProjections(
+      supabase, search.jobIds, kind, options,
+    );
     const jobs: Job[] = [];
     for (let start = 0; start < search.jobIds.length; start += 500) {
       const response = await supabase.from("jobs").select(
         "*, customized_resumes!jobs_customized_resume_id_fkey(resume_link)",
       ).in("job_id", search.jobIds.slice(start, start + 500));
-      jobs.push(...(((await handleResponse(response)) ?? []) as Job[]));
+      for (const job of ((await handleResponse(response)) ?? []) as Job[]) {
+        const membership = memberships.get(job.job_id);
+        // A lane-scoped ID page and its projection use the same predicates.
+        // Missing projection state is therefore a consistency error, not a
+        // reason to leak jobs.* global technology-delivery state.
+        if (options.archetype?.length && !membership) {
+          throw new Error(`Missing qualifying membership projection for job ${job.job_id}`);
+        }
+        jobs.push(membership ? overlayMembership(job, membership) : job);
+      }
     }
     const rank = new Map(search.jobIds.map((jobId, index) => [jobId, index]));
     return jobs.sort((left, right) => rank.get(left.job_id)! - rank.get(right.job_id)!);
@@ -459,7 +565,11 @@ async function getJobRows(kind: JobListKind, options: InternalJobListOptions): P
 async function getJobCount(kind: JobListKind, options: InternalJobListOptions): Promise<number> {
   const supabase = await supabaseClientFactory();
   const ast = booleanSearchAst(options.query);
-  if (ast) return (await getBooleanSearchPage(supabase, kind, options, ast)).totalCount;
+  if (ast || options.archetype?.length) {
+    return (ast
+      ? await getBooleanSearchPage(supabase, kind, options, ast)
+      : await getMembershipJobPage(supabase, kind, options, true)).totalCount;
+  }
   const query = applyJobPredicates(
     supabase.from("jobs").select("*", { count: "exact", head: true }),
     kind,
@@ -679,7 +789,9 @@ export async function getKeywordInsights(
   while (totalCount === null || keywords.length < totalCount) {
     const response = await supabase.rpc("get_filtered_keyword_insights", {
       p_providers: arrayOption(options.providers, options.provider),
-      p_archetypes: arrayOption(options.archetypes, options.archetype, ["software_tpm"]),
+      p_archetypes: compatibleArchetypeValues(
+        arrayOption(options.archetypes, options.archetype, ["technology_delivery"]) ?? [],
+      ),
       p_levels: nonEmpty(options.levels),
       p_filter_status: keywordFilterStatus(options.filterStatus),
       p_companies: nonEmpty(options.companies),
@@ -710,12 +822,20 @@ export async function getKeywordInsights(
 
 export async function getJobKeywordInsights(
   jobId: string,
+  archetype?: string | readonly string[],
 ): Promise<JobKeywordInsight[]> {
   const supabase = await supabaseClientFactory();
-  const response = await supabase
+  let query = supabase
     .from("job_keyword_insights")
     .select("job_id, keyword, category, analyzed_at, archetype, provider")
-    .eq("job_id", jobId)
+    .eq("job_id", jobId);
+  const requested = Array.isArray(archetype)
+    ? nonEmpty(archetype)
+    : typeof archetype === "string" ? nonEmpty([archetype]) : null;
+  if (requested?.length) {
+    query = query.in("archetype", compatibleArchetypeValues(requested));
+  }
+  const response = query
     .order("category", { ascending: true })
     .order("keyword", { ascending: true });
   return (((await handleResponse(response)) ?? []) as JobKeywordInsight[]);
@@ -812,7 +932,10 @@ export async function getAppliedJobsCountByDate(
   return count ?? 0;
 }
 
-export async function getJobById(job_id: string): Promise<Job | null> {
+export async function getJobById(
+  job_id: string,
+  archetype?: string | readonly string[],
+): Promise<Job | null> {
   // The jobs table now stores one canonical row per role; job_id remains the stable canonical row identifier.
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
@@ -829,7 +952,17 @@ export async function getJobById(job_id: string): Promise<Job | null> {
   // The 'data' object will now potentially include a 'customized_resumes' field:
   // e.g., { ..., customized_resume_id: 'xyz', customized_resumes: { resume_link: '...' } }
   // or { ..., customized_resume_id: null, customized_resumes: null }
-  return data as Job | null; // Ensure your Job type definition accommodates this structure
+  const job = data as Job | null;
+  const requested = Array.isArray(archetype)
+    ? nonEmpty(archetype)
+    : typeof archetype === "string" ? nonEmpty([archetype]) : null;
+  if (!job || !requested?.length) return job;
+  const options: InternalJobListOptions = { archetype: requested };
+  const memberships = await getMembershipProjections(
+    supabase, [job_id], "all", options,
+  );
+  const membership = memberships.get(job_id);
+  return membership ? overlayMembership(job, membership) : null;
 }
 
 // New function to update a job by its ID

@@ -89,7 +89,7 @@ test("getKeywordInsights calls the filtered RPC with safe defaults", async () =>
       method: "rpc",
       args: ["get_filtered_keyword_insights", {
         p_providers: null,
-        p_archetypes: ["software_tpm"],
+        p_archetypes: ["technology_delivery", "software_tpm"],
         p_levels: null,
         p_filter_status: "unfiltered",
         p_companies: null,
@@ -123,7 +123,7 @@ test("getKeywordInsights maps array filters and status to RPC parameters", async
 
   assert.deepEqual(mock.calls[0]?.args[1], {
     p_providers: ["linkedin", "careers_future"],
-    p_archetypes: ["software_tpm", "data_pm"],
+    p_archetypes: ["technology_delivery", "software_tpm", "data_pm"],
     p_levels: ["Entry level"],
     p_filter_status: "all",
     p_companies: ["Acme"],

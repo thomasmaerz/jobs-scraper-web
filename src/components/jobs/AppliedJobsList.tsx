@@ -18,7 +18,8 @@ import {
   Info, // <-- Add Info icon
 } from "lucide-react";
 import { Job } from "@/types";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { jobDetailHref } from "@/lib/jobs/detailLink";
 import {
   formatFilterReason,
   formatArchetype,
@@ -90,6 +91,7 @@ export default function AppliedJobsList({
   const [updatingJobId, setUpdatingJobId] = useState<string | null>(null);
   const [isStatusMenuOpen, setIsStatusMenuOpen] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     setDisplayedJobs(jobs);
@@ -270,7 +272,7 @@ export default function AppliedJobsList({
                   {/* Left side actions */}
                   <div className="flex flex-wrap gap-2">
                     <Link
-                      href={`/jobs/${job.job_id}`} // <-- Changed: Link to job details page
+                      href={jobDetailHref(job.job_id, searchParams)}
                       className="inline-flex items-center px-3 py-1.5 bg-white border border-gray-300 text-gray-700 text-sm rounded-md hover:bg-gray-50 transition-colors"
                     >
                       <Info size={14} className="mr-1.5" /> {/* <-- Add Icon */}

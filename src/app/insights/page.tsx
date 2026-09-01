@@ -6,6 +6,7 @@ import FilterChips from "@/components/jobs/FilterChips";
 import { parseFilterSearchParams } from "@/lib/filters/searchParams";
 import type { FilterId } from "@/lib/filters/types";
 import { getKeywordInsights } from "@/lib/supabase/queries";
+import { CANONICAL_ARCHETYPES, archetypeLabel } from "@/lib/archetypes/registry";
 
 const INSIGHTS_FILTERS = [
   "provider",
@@ -16,7 +17,7 @@ const INSIGHTS_FILTERS = [
   "jobTitle",
   "location",
 ] as const satisfies readonly FilterId[];
-const KNOWN_ARCHETYPES = ["software_tpm"] as const;
+const KNOWN_ARCHETYPES = CANONICAL_ARCHETYPES;
 
 function InsightsHeader() {
   return (
@@ -68,11 +69,7 @@ export default async function InsightsPage({
     ? filters.archetype
     : [...KNOWN_ARCHETYPES];
   const activeCategory = filters.category ?? "all";
-  const scopeLabel = archetypes
-    .map((archetype) =>
-      archetype === "software_tpm" ? "Software TPM" : archetype,
-    )
-    .join(", ");
+  const scopeLabel = archetypes.map(archetypeLabel).join(", ");
 
   let result: Awaited<ReturnType<typeof getKeywordInsights>> | undefined;
   let errorMessage: string | undefined;

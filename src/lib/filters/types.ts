@@ -1,3 +1,5 @@
+import { CANONICAL_ARCHETYPES } from "../archetypes/registry.ts";
+
 export const FILTER_IDS = [
   "provider",
   "interest",
@@ -50,7 +52,7 @@ export const METRO_VALUES = [
 ] as const;
 export type MetroCode = (typeof METRO_VALUES)[number];
 
-export const ARCHETYPE_VALUES = ["software_tpm"] as const;
+export const ARCHETYPE_VALUES = [...CANONICAL_ARCHETYPES, "software_tpm"] as const;
 export type BuiltInArchetype = (typeof ARCHETYPE_VALUES)[number];
 export type Archetype<TKnown extends string = never> = BuiltInArchetype | TKnown;
 

@@ -1,4 +1,5 @@
 import type { Job } from "../../types";
+import { archetypeLabel } from "../archetypes/registry.ts";
 
 export function getExternalJobPostingId(job: Job): string {
   return job.latest_job_id || job.job_id;
@@ -137,8 +138,7 @@ export function hasSpecifiedLevel(level: string | null | undefined): boolean {
 
 export function formatArchetype(archetype: string | null | undefined): string {
   if (!archetype) return "";
-  if (archetype.trim().toLowerCase() === "software_tpm") return "Software TPM";
-  return archetype.replaceAll("_", " ");
+  return archetypeLabel(archetype);
 }
 
 export function formatFilterReason(

@@ -6,10 +6,14 @@ import Link from "next/link";
 
 type PageProps = {
   params: Promise<{ job_id: string }>;
+  searchParams?: Promise<{ archetype?: string | string[] }>;
 };
 
-export default async function JobDetailPage({ params }: PageProps) {
+export default async function JobDetailPage({ params, searchParams }: PageProps) {
   const { job_id } = await params;
+  // Only an explicit query parameter selects a membership projection. Without
+  // it getJobById returns the canonical job row and does not guess a lane.
+  const archetype = (await searchParams)?.archetype;
 
   if (!job_id) {
     // This case should ideally be handled by Next.js routing if job_id is missing in URL
@@ -20,8 +24,8 @@ export default async function JobDetailPage({ params }: PageProps) {
   try {
     // job_id here is the canonical row key, not necessarily the latest LinkedIn listing id.
     const [jobDetails, keywordInsights] = await Promise.all([
-      getJobById(job_id),
-      getJobKeywordInsights(job_id),
+      getJobById(job_id, archetype),
+      getJobKeywordInsights(job_id, archetype),
     ]);
 
     if (!jobDetails) {

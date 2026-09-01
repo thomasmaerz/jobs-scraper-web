@@ -1,4 +1,6 @@
-const DEFAULT_ARCHETYPE = "software_tpm";
+import { canonicalizeArchetype } from "../../lib/archetypes/registry.ts";
+
+const DEFAULT_ARCHETYPE = "technology_delivery";
 
 export function normalizeInsightsArchetype(
   archetypeParam: string | string[] | undefined,
@@ -12,5 +14,5 @@ export function normalizeInsightsArchetype(
 
   const normalized = candidate?.trim();
 
-  return normalized ? normalized : DEFAULT_ARCHETYPE;
+  return normalized ? canonicalizeArchetype(normalized) : DEFAULT_ARCHETYPE;
 }

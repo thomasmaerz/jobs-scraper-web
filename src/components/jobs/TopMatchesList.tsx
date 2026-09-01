@@ -36,6 +36,7 @@ import {
   getListingRecruiters,
   hasListingVariants,
 } from "@/lib/jobs/repost";
+import { jobDetailHref } from "@/lib/jobs/detailLink";
 
 interface TopMatchesListProps {
   jobs: Job[];
@@ -525,6 +526,12 @@ export default function TopMatchesList({
 
               {/* Action buttons */}
               <div className="flex flex-wrap gap-3 mt-5">
+                <Link
+                  href={jobDetailHref(selectedJob.job_id, searchParams)}
+                  className="inline-flex items-center px-4 py-2 border border-indigo-200 text-indigo-700 text-sm font-medium rounded-md hover:bg-indigo-50 transition-colors"
+                >
+                  View Details
+                </Link>
                 {selectedJobUrl && (
                   <Link
                     href={selectedJobUrl}

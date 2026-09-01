@@ -1,6 +1,6 @@
-# Job Scrapper Web
+# Job Scraper Web
 
-Job Scrapper Web is a Next.js application designed to help you track and manage job applications scraped using [Job Scraper](https://github.com/anandanair/job-scraper). It allows users to view new job listings, mark jobs as applied, see top matches based on resume scores, and manage customized resumes for different applications.
+Job Scraper Web is the control center for a lane-aware job search. Review canonical listings, filter by career lane, inspect scores and repost history, track applications, manage resumes, explore market insights, and tune the scraper without editing Python.
 
 ## Features
 
@@ -18,6 +18,16 @@ Job Scrapper Web is a Next.js application designed to help you track and manage 
 - **Pagination**: Efficiently navigate through large lists of jobs.
 - **Responsive Design**: User-friendly interface across various devices.
 - **Supabase Integration**: Utilizes Supabase for backend services and database management.
+- **Scraper Control Center**: Configure lane queries, routing filters, Canada/USA/EEA coverage, lookback, limits, and processing switches from `/config`.
+- **Membership-Aware Views**: Multi-lane filters return each canonical job once while displaying the qualifying lane's independent state.
+
+## Scraper configuration
+
+Each enabled lane displays independent resume readiness. `Resume ready` means an enabled `archetype_resume_profiles` row resolves to a base resume. `Scrape only · resume missing` is intentional: scraping remains enabled, while resume-dependent workers such as scoring and resume generation skip that lane. The lane migration safely seeds or refreshes `technology_delivery` from the latest existing `base_resume`; it does not invent profiles for other lanes.
+
+The authenticated `/config` page manages the database-backed career lanes and scrape settings. This repository does not currently include a sign-in page; the deployment must establish a Supabase Auth browser session before `/config` can load. An account is treated as an administrator when its Supabase `app_metadata` contains `admin: true` or `role: "admin"`, or when its email is listed in the server-only `ADMIN_EMAILS` environment variable (comma-separated). The page shows setup guidance for missing sessions and authorization.
+
+`SUPABASE_SERVICE_ROLE_KEY` must remain server-only. The scraper reads configuration through the service-role-only `get_scraper_configuration()` RPC and records query provenance through the service-role-only `record_job_archetype_membership(...)` RPC; browser code never receives that key. Apply migrations through the normal deployment workflow before opening `/config`.
 
 ## Tech Stack
 
@@ -34,7 +44,25 @@ Job Scrapper Web is a Next.js application designed to help you track and manage 
 
 ## Getting Started
 
-Follow these instructions to get a copy of the project up and running on your local machine for development and testing purposes.
+Use the backend setup below, then configure this app with the same Supabase project. After installation, an administrator can manage the entire search strategy at `/config`.
+
+### Quick start
+
+```bash
+npm install
+npm run dev
+```
+
+Add these values to `.env.local` before starting:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-publishable-or-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+ADMIN_EMAILS=you@example.com
+```
+
+`SUPABASE_SERVICE_ROLE_KEY` is server-only. Never prefix it with `NEXT_PUBLIC_`. Apply `supabase/migrations` in order through the normal Supabase deployment workflow before opening `/config`.
 
 ### Backend Setup (Crucial Prerequisite)
 
@@ -45,6 +73,17 @@ Follow these instructions to get a copy of the project up and running on your lo
 3.  **Database**: The backend setup will create and manage the database required by this frontend application.
 
 Once the backend is successfully set up and running, you can proceed with setting up this frontend application.
+
+The lane migration preserves legacy `jobs.archetype` values and creates canonical `technology_delivery` memberships for existing `software_tpm` data. Establish a Supabase Auth browser session for an administrator before opening `/config`; this repository does not currently include a sign-in page, so the page displays setup guidance when authentication is missing.
+
+### Verify locally
+
+```bash
+npm test
+npm run typecheck
+npm run lint
+npm run build
+```
 
 ### Prerequisites
 
@@ -132,3 +171,12 @@ Contributions are welcome! Please follow the standard fork-and-pull-request work
 ## License
 
 This project is licensed under the MIT License. See the `LICENSE` file for more details.
+# Lane-scoped job state
+
+Job list rows filtered by one or more career lanes expose state from a single
+qualifying `job_archetype_memberships` row, not the global compatibility fields
+on `jobs`. For multi-lane filters, the projection deterministically prefers the
+highest qualifying `match_score`, then `career_lane_definitions.sort_order`, then
+`archetype`. The same row supplies `resume_score`, `resume_score_stage`, filter
+state, customized resume, and displayed archetype. Detail URLs preserve global
+`jobs` behavior unless an `archetype` query parameter is explicitly supplied.
