@@ -42,13 +42,13 @@ export default async function TopMatchesPage({
 }) {
   const filters = parseFilterSearchParams((await searchParams) ?? {});
   const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
-  const currentPage = pageSize === "all" ? 1 : filters.page ?? 1;
+  const currentPage = filters.page ?? 1;
   const options = { ...filters, page: currentPage, pageSize };
   const [topJobs, totalCount] = await Promise.all([
     getTopScoredJobs(options),
     getTopScoredJobsCount(options),
   ]);
-  const totalPages = pageSize === "all" ? 1 : Math.ceil(totalCount / pageSize);
+  const totalPages = Math.ceil(totalCount / pageSize);
 
   return (
     <div className="mx-auto flex h-full min-h-0 max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">

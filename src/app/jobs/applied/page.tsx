@@ -39,13 +39,13 @@ export default async function AppliedJobsPage({
 }) {
   const filters = parseFilterSearchParams((await searchParams) ?? {});
   const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
-  const currentPage = pageSize === "all" ? 1 : filters.page ?? 1;
+  const currentPage = filters.page ?? 1;
   const options = { ...filters, page: currentPage, pageSize };
   const [appliedJobs, totalCount] = await Promise.all([
     getAppliedJobs(options),
     getAppliedJobsCount(options),
   ]);
-  const totalPages = pageSize === "all" ? 1 : Math.ceil(totalCount / pageSize);
+  const totalPages = Math.ceil(totalCount / pageSize);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">

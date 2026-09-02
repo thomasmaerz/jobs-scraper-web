@@ -17,7 +17,7 @@ import {
 import MarkdownRenderer from "./MarkdownRenderer";
 import ListingHistoryPanel from "./ListingHistoryPanel";
 import LocalDateTime from "./LocalDateTime";
-import { Job } from "@/types";
+import type { Job, JobListItem } from "@/types";
 import { useRouter, useSearchParams } from "next/navigation"; // Added useSearchParams
 import {
   formatFilterReason,
@@ -37,12 +37,13 @@ import {
   hasListingVariants,
 } from "@/lib/jobs/repost";
 import { jobDetailHref } from "@/lib/jobs/detailLink";
+import { withSelectedJobId } from "@/lib/filters/searchParams";
 
 interface TopMatchesListProps {
-  jobs: Job[];
+  jobs: JobListItem[];
   currentPage: number;
   totalPages: number;
-  pageSize: 10 | 25 | 100 | "all";
+  pageSize: 10 | 25 | 100;
   listTitle?: string;
 }
 
@@ -70,7 +71,9 @@ export default function TopMatchesList({
   pageSize,
   listTitle = "Job Matches",
 }: TopMatchesListProps) {
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null); // Initialize as null
+  const [selectedJob, setSelectedJob] = useState<JobListItem | null>(null);
+  const [selectedJobDetails, setSelectedJobDetails] = useState<Job | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isUpdatingInterest, setIsUpdatingInterest] = useState(false);
   const jobCardRefs = useRef<Array<HTMLLIElement | null>>([]);
@@ -79,7 +82,7 @@ export default function TopMatchesList({
 
   useEffect(() => {
     const selectedJobIdFromUrl = searchParams.get("selectedJobId");
-    let jobToSelect: Job | null = null;
+    let jobToSelect: JobListItem | null = null;
 
     if (selectedJobIdFromUrl) {
       // Try to find the job from the URL ID in the *current* jobs list
@@ -93,11 +96,8 @@ export default function TopMatchesList({
       jobToSelect = jobs[0];
       // Update URL with the default selected job ID if it's missing
       if (!selectedJobIdFromUrl) {
-        const params = new URLSearchParams(searchParams.toString());
-        params.set("selectedJobId", jobToSelect.job_id);
-        router.replace(`${window.location.pathname}?${params.toString()}`, {
-          scroll: false,
-        });
+        const params = withSelectedJobId(searchParams, jobToSelect.job_id);
+        window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
       }
     }
     // If jobs list is empty, ensure jobToSelect is null.
@@ -105,12 +105,38 @@ export default function TopMatchesList({
       jobToSelect = null;
     }
 
-    // Update state only if the selected job (by ID) is different,
-    // or if jobToSelect is null and selectedJob is not (or vice-versa).
-    if (selectedJob?.job_id !== jobToSelect?.job_id) {
-      setSelectedJob(jobToSelect);
-    }
+    setSelectedJob(jobToSelect);
   }, [jobs, searchParams]); // Dependencies are jobs and searchParams
+
+  const selectedJobId = selectedJob?.job_id;
+  const detailArchetypeQuery = new URLSearchParams(
+    searchParams
+      .getAll("archetype")
+      .filter((archetype) => archetype.trim())
+      .map((archetype) => ["archetype", archetype]),
+  ).toString();
+  useEffect(() => {
+    if (!selectedJobId) {
+      setSelectedJobDetails(null);
+      return;
+    }
+    const controller = new AbortController();
+    setSelectedJobDetails(null);
+    setDetailError(null);
+    fetch(`/api/jobs/${encodeURIComponent(selectedJobId)}${detailArchetypeQuery ? `?${detailArchetypeQuery}` : ""}`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return response.json() as Promise<Job>;
+      })
+      .then(setSelectedJobDetails)
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setDetailError(error instanceof Error ? error.message : "Failed to load details");
+      });
+    return () => controller.abort();
+  }, [selectedJobId, detailArchetypeQuery]);
 
   const handleViewResume = (
     job_id: string,
@@ -125,15 +151,13 @@ export default function TopMatchesList({
     router.push(`/jobs/${job_id}/resumes/${resume_id}?${params.toString()}`);
   };
 
-  const handleJobSelect = (job: Job) => {
+  const handleJobSelect = (job: JobListItem) => {
     setSelectedJob(job);
     // Update URL with selected job ID without adding to history
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("selectedJobId", job.job_id);
-    // Use replace to avoid polluting browser history for selections on the same page
-    router.replace(`${window.location.pathname}?${params.toString()}`, {
-      scroll: false,
-    });
+    const params = withSelectedJobId(searchParams, job.job_id);
+    // Native history avoids a Next navigation and therefore does not rerun the
+    // Server Component list/count for a client-only selection change.
+    window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
   };
 
   const handleJobCardKeyDown = (
@@ -286,8 +310,8 @@ export default function TopMatchesList({
   );
 
   const selectedJobSalary = selectedJob ? formatSalary(selectedJob) : null;
-  const selectedJobRecruiters = selectedJob
-    ? getListingRecruiters(selectedJob)
+  const selectedJobRecruiters = selectedJobDetails
+    ? getListingRecruiters(selectedJobDetails)
     : [];
   const selectedJobUrl = selectedJob ? getExternalJobUrl(selectedJob) : null;
 
@@ -630,13 +654,21 @@ export default function TopMatchesList({
               </div>
             </div>
 
-            {hasListingVariants(selectedJob) && (
+            {!selectedJobDetails && (
+              <p className={`px-6 pt-4 text-sm ${detailError ? "text-red-600" : "text-gray-500"}`}>
+                {detailError ? `Unable to load job details: ${detailError}` : "Loading job details…"}
+              </p>
+            )}
+
+            {selectedJobDetails && hasListingVariants(selectedJobDetails) && (
               <div className="px-6 pt-4">
                 <details>
                   <summary className="cursor-pointer rounded-lg border border-slate-200 bg-white px-4 py-3 font-medium text-slate-900 shadow-sm hover:bg-slate-50">
                     Listing history and posting waves
                   </summary>
-                  <div className="mt-3"><ListingHistoryPanel job={selectedJob} /></div>
+                  <div className="mt-3">
+                    <ListingHistoryPanel job={selectedJobDetails} />
+                  </div>
                 </details>
               </div>
             )}
@@ -644,7 +676,7 @@ export default function TopMatchesList({
             {/* Scrollable content for description */}
             <div className="p-6 flex-grow">
               <div className="prose max-w-none">
-                <MarkdownRenderer content={selectedJob.description || ""} />
+                <MarkdownRenderer content={selectedJobDetails?.description || ""} />
               </div>
             </div>
           </div>

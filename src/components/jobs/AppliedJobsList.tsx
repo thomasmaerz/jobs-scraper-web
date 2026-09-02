@@ -17,7 +17,7 @@ import {
   ChevronRight,
   Info, // <-- Add Info icon
 } from "lucide-react";
-import { Job } from "@/types";
+import type { JobListItem } from "@/types";
 import { useRouter, useSearchParams } from "next/navigation";
 import { jobDetailHref } from "@/lib/jobs/detailLink";
 import {
@@ -58,10 +58,10 @@ const JOB_STATUS_OPTIONS = [
 ];
 
 interface AppliedJobsListProps {
-  jobs: Job[];
+  jobs: JobListItem[];
   currentPage: number;
   totalPages: number;
-  pageSize: 10 | 25 | 100 | "all";
+  pageSize: 10 | 25 | 100;
 }
 
 function getLevelBadgeColor(level: string | null): string {
@@ -104,7 +104,7 @@ export default function AppliedJobsList({
     router.push(`/jobs/${job_id}/resumes/${resume_id}`);
   };
 
-  const handleStatusChange = async (job: Job, newStatus: string) => {
+  const handleStatusChange = async (job: JobListItem, newStatus: string) => {
     setUpdatingJobId(job.job_id);
     setIsStatusMenuOpen(null);
 
@@ -126,7 +126,7 @@ export default function AppliedJobsList({
         throw new Error(errorMessage);
       }
 
-      const updatedJob: Partial<Job> = await response.json();
+      const updatedJob: Partial<JobListItem> = await response.json();
       setDisplayedJobs((currentJobs) =>
         currentJobs.map((currentJob) =>
           currentJob.job_id === job.job_id

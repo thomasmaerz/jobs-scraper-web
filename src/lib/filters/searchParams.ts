@@ -113,13 +113,23 @@ function integer(
     : undefined;
 }
 
-function pageSize(input: SearchParamsInput): 10 | 25 | 100 | "all" | undefined {
+function pageSize(input: SearchParamsInput): 10 | 25 | 100 | undefined {
   const value = values(input, "pageSize")[0];
-  if (value === "all") return value;
+  // Keep old shared/bookmarked URLs working without allowing an unbounded read.
+  if (value === "all") return 100;
   if (value === "10" || value === "25" || value === "100") {
     return Number(value) as 10 | 25 | 100;
   }
   return undefined;
+}
+
+export function withSelectedJobId(
+  input: URLSearchParams,
+  selectedJobId: string,
+): URLSearchParams {
+  const params = new URLSearchParams(input);
+  params.set("selectedJobId", selectedJobId);
+  return params;
 }
 
 export function parseFilterSearchParams(input: SearchParamsInput): FilterState;

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { updateJobById } from "@/lib/supabase/queries"; // Adjust path as needed
+import { getJobById, updateJobById } from "@/lib/supabase/queries";
 
 const ALLOWED_UPDATE_KEYS = new Set([
   "application_date",
@@ -7,6 +7,27 @@ const ALLOWED_UPDATE_KEYS = new Set([
   "notes",
   "status",
 ]);
+
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ job_id: string }> },
+) {
+  try {
+    const { job_id } = await params;
+    if (!job_id) {
+      return NextResponse.json({ error: "Job ID is required" }, { status: 400 });
+    }
+    const archetype = new URL(request.url).searchParams.get("archetype") ?? undefined;
+    const job = await getJobById(job_id, archetype);
+    if (!job) {
+      return NextResponse.json({ error: `Job with ID ${job_id} not found` }, { status: 404 });
+    }
+    return NextResponse.json(job);
+  } catch (error) {
+    console.error("API Error fetching job:", error);
+    return NextResponse.json({ error: "Failed to fetch job" }, { status: 500 });
+  }
+}
 
 // Handler for PATCH requests to update a job
 export async function PATCH(

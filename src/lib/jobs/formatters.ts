@@ -1,11 +1,11 @@
-import type { Job } from "../../types";
+import type { Job, JobListItem } from "../../types";
 import { archetypeLabel } from "../archetypes/registry.ts";
 
-export function getExternalJobPostingId(job: Job): string {
+export function getExternalJobPostingId(job: Pick<Job, "latest_job_id" | "job_id">): string {
   return job.latest_job_id || job.job_id;
 }
 
-export function getLatestPostedAt(job: Job): string | null {
+export function getLatestPostedAt(job: Pick<Job, "effective_posted_at" | "posted_at" | "last_seen_posted_at">): string | null {
   if (job.effective_posted_at) return job.effective_posted_at;
   const values = [job.posted_at, job.last_seen_posted_at].filter(
     (value): value is string => Boolean(value),
@@ -16,7 +16,7 @@ export function getLatestPostedAt(job: Job): string | null {
   }, null);
 }
 
-export function getJobDisplayDate(job: Job): {
+export function getJobDisplayDate(job: Pick<Job, "effective_posted_at" | "posted_at" | "last_seen_posted_at" | "scraped_at">): {
   label: "Posted" | "Scraped";
   value: string;
 } | null {
@@ -51,7 +51,7 @@ export function sanitizeExternalUrl(url: string | null | undefined): string | nu
   }
 }
 
-export function getExternalJobUrl(job: Job): string | null {
+export function getExternalJobUrl(job: Pick<Job, "latest_job_id" | "job_id" | "provider">): string | null {
   const listingId = getExternalJobPostingId(job);
 
   if (job.provider === "careers_future") {
@@ -71,7 +71,7 @@ export function getLinkedInListingUrl(jobId: string | null | undefined): string 
   return `https://www.linkedin.com/jobs/view/${listingId}`;
 }
 
-export function formatSalary(job: Job): string | null {
+export function formatSalary(job: Pick<JobListItem, "salary_text" | "salary_min" | "salary_max" | "salary_currency">): string | null {
   if (job.salary_text) return job.salary_text;
 
   if (job.salary_min != null && job.salary_max != null) {

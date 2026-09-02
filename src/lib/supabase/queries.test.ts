@@ -17,6 +17,7 @@ import {
   getNewJobs,
   getTopScoredJobs,
   getTopScoredJobsCount,
+  JOB_LIST_SELECT,
   type JobListQueryOptions,
 } from "./queries.ts";
 import { SORT_FIELDS, type SortField, type SortOrder } from "../filters/types.ts";
@@ -116,6 +117,25 @@ const jobLists = [
 
 test.afterEach(() => {
   __resetSupabaseClientFactoryForTests();
+});
+
+test("job lists use a narrow projection and never select detail payloads", async () => {
+  for (const list of jobLists) {
+    const calls = await rowCalls(list.rows);
+    assert.equal(hasCall(calls, "select", JOB_LIST_SELECT), true, list.name);
+    const projection = calls.find((call) => call.method === "select")?.args[0];
+    assert.equal(typeof projection, "string");
+    assert.equal((projection as string).includes("*"), false, list.name);
+    assert.equal((projection as string).includes("description"), false, list.name);
+    assert.equal((projection as string).includes("listing_instances"), false, list.name);
+  }
+});
+
+test("job-list page size is always bounded to 100", async () => {
+  for (const pageSize of ["all", 101, 1000] as const) {
+    const calls = await rowCalls(getAllJobs, { page: 2, pageSize });
+    assert.equal(hasCall(calls, "range", 100, 199), true, String(pageSize));
+  }
 });
 
 test("all, new, top, and applied row/count queries keep every predicate in parity", async () => {
@@ -265,18 +285,18 @@ test("interest and filterStatus defaults and overrides are exact", async () => {
   assert.ok(hasCall(defaultCalls, "or", "is_filtered.is.null,is_filtered.eq.false"));
 
   const shownCalls = await rowCalls(getNewJobs, { filterStatus: "show_filtered" });
-  assert.equal(shownCalls.some((call) => String(call.args[0]).includes("is_filtered")), false);
+  assert.equal(predicates(shownCalls).some((call) => String(call.args[0]).includes("is_filtered")), false);
 
   const entryCalls = await rowCalls(getNewJobs, { filterStatus: "entry_level" });
   assert.ok(hasCall(entryCalls, "eq", "is_entry_level_filtered", true));
-  assert.equal(entryCalls.some((call) => String(call.args[0]).includes("is_filtered")), false);
-  assert.equal(entryCalls.some((call) => String(call.args[0]).includes("is_interested")), false);
-  assert.equal(entryCalls.some((call) => call.args[0] === "resume_score"), false);
+  assert.equal(predicates(entryCalls).some((call) => String(call.args[0]).includes("is_filtered")), false);
+  assert.equal(predicates(entryCalls).some((call) => String(call.args[0]).includes("is_interested")), false);
+  assert.equal(predicates(entryCalls).some((call) => call.args[0] === "resume_score"), false);
 
   const topCalls = await rowCalls(getTopScoredJobs);
   assert.ok(hasCall(topCalls, "gte", "resume_score", 50));
   assert.ok(hasCall(topCalls, "lte", "resume_score", 100));
-  assert.equal(topCalls.some((call) => String(call.args[0]).includes("is_interested")), false);
+  assert.equal(predicates(topCalls).some((call) => String(call.args[0]).includes("is_interested")), false);
 });
 
 test("date-posted filters are bounded", async () => {
@@ -525,21 +545,19 @@ test("salary sorting excludes implausible parser outliers", async () => {
   ]);
 });
 
-test("pagination supports 10, 25, 100, and batched all results", async () => {
+test("pagination supports 10, 25, 100 and caps legacy all", async () => {
   for (const pageSize of [10, 25, 100] as const) {
     const calls = await rowCalls(getNewJobs, { page: 2, pageSize });
     assert.deepEqual(calls.at(-1), { method: "range", args: [pageSize, pageSize * 2 - 1] });
   }
 
-  const firstBatch = Array.from({ length: 1000 }, (_, index) => ({ job_id: `job-${index}` }));
-  const finalBatch = [{ job_id: "job-1000" }, { job_id: "job-1001" }];
-  const mock = createQueryClient({ rangeData: [firstBatch, finalBatch] });
+  const cappedBatch = Array.from({ length: 100 }, (_, index) => ({ job_id: `job-${index}` }));
+  const mock = createQueryClient({ rangeData: [cappedBatch] });
   __setSupabaseClientFactoryForTests(async () => mock.client);
   const rows = await getNewJobs({ page: 99, pageSize: "all" });
-  assert.equal(rows.length, 1002);
+  assert.equal(rows.length, 100);
   assert.deepEqual(mock.calls.filter((call) => call.method === "range"), [
-    { method: "range", args: [0, 999] },
-    { method: "range", args: [1000, 1999] },
+    { method: "range", args: [9800, 9899] },
   ]);
 });
 

@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 interface PaginationControlsProps {
   currentPage: number;
   totalPages: number;
-  pageSize: 10 | 25 | 100 | "all";
+  pageSize: 10 | 25 | 100;
 }
 
 export default function PaginationControls({
@@ -100,12 +100,11 @@ export default function PaginationControls({
           <option value="10">10</option>
           <option value="25">25</option>
           <option value="100">100</option>
-          <option value="all">Unlimited</option>
         </select>
       </label>
 
       <div className="justify-self-end text-xs text-gray-500">
-        {pageSize === "all" ? "All jobs" : `Page ${currentPage} of ${totalPages}`}
+        {`Page ${currentPage} of ${totalPages}`}
       </div>
     </div>
   );

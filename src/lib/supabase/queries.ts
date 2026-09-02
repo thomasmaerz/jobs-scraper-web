@@ -1,5 +1,6 @@
 import type {
   Job,
+  JobListItem,
   JobKeywordInsight as SharedJobKeywordInsight,
   KeywordInsight,
   Resume,
@@ -25,6 +26,38 @@ export type KeywordInsightsResult = {
   keywords: KeywordInsight[];
   totalCount: number;
 };
+
+export const JOB_LIST_SELECT = [
+  "job_id",
+  "company",
+  "job_title",
+  "level",
+  "location",
+  "status",
+  "is_active",
+  "job_state",
+  "application_date",
+  "resume_score",
+  "resume_score_stage",
+  "is_interested",
+  "customized_resume_id",
+  "provider",
+  "posted_at",
+  "last_seen_posted_at",
+  "effective_posted_at",
+  "posted_relative_text",
+  "applicant_count",
+  "salary_text",
+  "salary_min",
+  "salary_max",
+  "salary_currency",
+  "scraped_at",
+  "latest_job_id",
+  "repost_count",
+  "archetype",
+  "is_filtered",
+  "filter_reason",
+].join(", ");
 
 type SupabaseClientFactory = () => Promise<any>;
 type LegacyProvider = string | undefined;
@@ -168,9 +201,9 @@ function safePositiveInteger(value: number | undefined, fallback: number): numbe
 }
 
 function pageRange(options: InternalJobListOptions) {
-  if (options.pageSize === "all") return null;
   const page = safePositiveInteger(options.page, 1);
-  const pageSize = Math.min(safePositiveInteger(options.pageSize, 25), 100);
+  const requestedPageSize = options.pageSize === "all" ? 100 : options.pageSize;
+  const pageSize = Math.min(safePositiveInteger(requestedPageSize, 25), 100);
   const from = (page - 1) * pageSize;
   return { from, to: from + pageSize - 1 };
 }
@@ -321,7 +354,10 @@ type JobMembershipProjection = {
   resume_link: string | null;
 };
 
-function overlayMembership(job: Job, membership: JobMembershipProjection): Job {
+function overlayMembership<TJob extends JobListItem>(
+  job: TJob,
+  membership: JobMembershipProjection,
+): TJob & Pick<Job, "customized_resumes" | "resume_link"> {
   return {
     ...job,
     archetype: membership.archetype,
@@ -503,7 +539,7 @@ function applyJobSort(query: any, kind: JobListKind, options: InternalJobListOpt
     .order("job_id", { ascending: true });
 }
 
-async function getJobRows(kind: JobListKind, options: InternalJobListOptions): Promise<Job[]> {
+async function getJobRows(kind: JobListKind, options: InternalJobListOptions): Promise<JobListItem[]> {
   const supabase = await supabaseClientFactory();
   const ast = booleanSearchAst(options.query);
   if (ast || options.archetype?.length) {
@@ -514,12 +550,11 @@ async function getJobRows(kind: JobListKind, options: InternalJobListOptions): P
     const memberships = await getMembershipProjections(
       supabase, search.jobIds, kind, options,
     );
-    const jobs: Job[] = [];
+    const jobs: JobListItem[] = [];
     for (let start = 0; start < search.jobIds.length; start += 500) {
-      const response = await supabase.from("jobs").select(
-        "*, customized_resumes!jobs_customized_resume_id_fkey(resume_link)",
-      ).in("job_id", search.jobIds.slice(start, start + 500));
-      for (const job of ((await handleResponse(response)) ?? []) as Job[]) {
+      const response = await supabase.from("jobs").select(JOB_LIST_SELECT)
+        .in("job_id", search.jobIds.slice(start, start + 500));
+      for (const job of ((await handleResponse(response)) ?? []) as JobListItem[]) {
         const membership = memberships.get(job.job_id);
         // A lane-scoped ID page and its projection use the same predicates.
         // Missing projection state is therefore a consistency error, not a
@@ -536,9 +571,7 @@ async function getJobRows(kind: JobListKind, options: InternalJobListOptions): P
   const createQuery = () =>
     applyJobSort(
       applyJobPredicates(
-        supabase.from("jobs").select(
-          "*, customized_resumes!jobs_customized_resume_id_fkey(resume_link)",
-        ),
+        supabase.from("jobs").select(JOB_LIST_SELECT),
         kind,
         options,
       ),
@@ -546,20 +579,8 @@ async function getJobRows(kind: JobListKind, options: InternalJobListOptions): P
       options,
     );
   const range = pageRange(options);
-  if (range) {
-    const response = await createQuery().range(range.from, range.to);
-    return ((await handleResponse(response)) ?? []) as Job[];
-  }
-
-  const jobs: Job[] = [];
-  const batchSize = 1000;
-  for (let from = 0; ; from += batchSize) {
-    const response = await createQuery().range(from, from + batchSize - 1);
-    const batch = ((await handleResponse(response)) ?? []) as Job[];
-    jobs.push(...batch);
-    if (batch.length < batchSize) break;
-  }
-  return jobs;
+  const response = await createQuery().range(range.from, range.to);
+  return ((await handleResponse(response)) ?? []) as JobListItem[];
 }
 
 async function getJobCount(kind: JobListKind, options: InternalJobListOptions): Promise<number> {
@@ -604,7 +625,7 @@ function legacyCountOptions(
   return { provider: optionsOrProvider as any, minScore, maxScore, interest, query };
 }
 
-export async function getNewJobs(options?: JobListQueryOptions): Promise<Job[]>;
+export async function getNewJobs(options?: JobListQueryOptions): Promise<JobListItem[]>;
 export async function getNewJobs(
   page?: number,
   pageSize?: number,
@@ -613,7 +634,7 @@ export async function getNewJobs(
   maxScore?: number,
   interest?: LegacyInterest,
   query?: string,
-): Promise<Job[]>;
+): Promise<JobListItem[]>;
 export async function getNewJobs(
   optionsOrPage: JobListQueryOptions | number = {},
   pageSize?: number,
@@ -622,13 +643,13 @@ export async function getNewJobs(
   maxScore?: number,
   interest?: LegacyInterest,
   query?: string,
-): Promise<Job[]> {
+): Promise<JobListItem[]> {
   return getJobRows("new", legacyListOptions(optionsOrPage, pageSize, provider, minScore, maxScore, interest, query));
 }
 
 export async function getAllJobs(
   options: JobListQueryOptions = {},
-): Promise<Job[]> {
+): Promise<JobListItem[]> {
   return getJobRows("all", options);
 }
 
@@ -656,7 +677,7 @@ export async function getAllActiveJobsCount(
   return getJobCount("new", legacyCountOptions(optionsOrProvider, minScore, maxScore, interest, query));
 }
 
-export async function getTopScoredJobs(options?: JobListQueryOptions): Promise<Job[]>;
+export async function getTopScoredJobs(options?: JobListQueryOptions): Promise<JobListItem[]>;
 export async function getTopScoredJobs(
   page?: number,
   pageSize?: number,
@@ -665,7 +686,7 @@ export async function getTopScoredJobs(
   maxScore?: number,
   interest?: LegacyInterest,
   query?: string,
-): Promise<Job[]>;
+): Promise<JobListItem[]>;
 export async function getTopScoredJobs(
   optionsOrPage: JobListQueryOptions | number = {},
   pageSize?: number,
@@ -674,7 +695,7 @@ export async function getTopScoredJobs(
   maxScore?: number,
   interest?: LegacyInterest,
   query?: string,
-): Promise<Job[]> {
+): Promise<JobListItem[]> {
   return getJobRows("top", legacyListOptions(optionsOrPage, pageSize, provider, minScore, maxScore, interest, query));
 }
 
@@ -717,7 +738,7 @@ function legacyAppliedOptions(
   };
 }
 
-export async function getAppliedJobs(options?: JobListQueryOptions): Promise<Job[]>;
+export async function getAppliedJobs(options?: JobListQueryOptions): Promise<JobListItem[]>;
 export async function getAppliedJobs(
   page?: number,
   pageSize?: number,
@@ -726,7 +747,7 @@ export async function getAppliedJobs(
   applicationStatus?: string,
   sortBy?: string,
   sortOrder?: string,
-): Promise<Job[]>;
+): Promise<JobListItem[]>;
 export async function getAppliedJobs(
   optionsOrPage: JobListQueryOptions | number = {},
   pageSize?: number,
@@ -735,7 +756,7 @@ export async function getAppliedJobs(
   applicationStatus?: string,
   sortBy?: string,
   sortOrder?: string,
-): Promise<Job[]> {
+): Promise<JobListItem[]> {
   return getJobRows("applied", legacyAppliedOptions(
     optionsOrPage,
     pageSize,

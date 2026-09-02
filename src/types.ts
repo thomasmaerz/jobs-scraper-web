@@ -104,6 +104,43 @@ export interface Job {
   listing_instances: ListingInstance[] | null;
 }
 
+/** Narrow row used by paginated job lists. Large detail fields are fetched
+ * only for the selected job. */
+export type JobListItem = Pick<
+  Job,
+  | "job_id"
+  | "company"
+  | "job_title"
+  | "level"
+  | "location"
+  | "status"
+  | "is_active"
+  | "job_state"
+  | "application_date"
+  | "resume_score"
+  | "resume_score_stage"
+  | "is_interested"
+  | "customized_resume_id"
+  | "customized_resumes"
+  | "resume_link"
+  | "provider"
+  | "posted_at"
+  | "last_seen_posted_at"
+  | "effective_posted_at"
+  | "posted_relative_text"
+  | "applicant_count"
+  | "salary_text"
+  | "salary_min"
+  | "salary_max"
+  | "salary_currency"
+  | "scraped_at"
+  | "latest_job_id"
+  | "repost_count"
+  | "archetype"
+  | "is_filtered"
+  | "filter_reason"
+>;
+
 // --- Resume Related Interfaces ---
 
 export interface Education {

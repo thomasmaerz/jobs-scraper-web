@@ -6,6 +6,7 @@ import {
   parseFilterSearchParams,
   resetResultPosition,
   setRepeatedParam,
+  withSelectedJobId,
 } from "./searchParams.ts";
 import {
   APPLICATION_STATUS_VALUES,
@@ -54,13 +55,14 @@ test("parses and validates a Next server search params record", () => {
   assert.deepEqual(parsed.excludeMetro, ["calgary", "vancouver"]);
 });
 
-test("parses supported page sizes and rejects unsupported values", () => {
-  for (const value of ["10", "25", "100", "all"] as const) {
+test("parses supported page sizes, caps legacy all, and rejects unsupported values", () => {
+  for (const value of ["10", "25", "100"] as const) {
     assert.equal(
       parseFilterSearchParams(new URLSearchParams(`pageSize=${value}`)).pageSize,
-      value === "all" ? value : Number(value),
+      Number(value),
     );
   }
+  assert.equal(parseFilterSearchParams(new URLSearchParams("pageSize=all")).pageSize, 100);
   for (const value of ["", "0", "1", "50", "101", "-25", "25.0", "ALL"]) {
     assert.equal(
       parseFilterSearchParams(new URLSearchParams(`pageSize=${value}`)).pageSize,
@@ -68,6 +70,13 @@ test("parses supported page sizes and rejects unsupported values", () => {
       value,
     );
   }
+});
+
+test("selected job URL changes preserve list params without changing pagination", () => {
+  const original = new URLSearchParams("query=engineer&page=4&pageSize=25");
+  const changed = withSelectedJobId(original, "job-1");
+  assert.equal(changed.toString(), "query=engineer&page=4&pageSize=25&selectedJobId=job-1");
+  assert.equal(original.has("selectedJobId"), false);
 });
 
 test("parses all valid geography values and rejects invalid geography", () => {

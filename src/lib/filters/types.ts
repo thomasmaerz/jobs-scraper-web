@@ -121,7 +121,7 @@ export interface FilterState<TArchetype extends string = BuiltInArchetype> {
   sortBy?: SortField;
   sortOrder?: SortOrder;
   page?: number;
-  pageSize?: 10 | 25 | 100 | "all";
+  pageSize?: 10 | 25 | 100;
   selectedJobId?: string;
 }
 
