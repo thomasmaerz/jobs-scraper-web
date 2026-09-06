@@ -14,6 +14,10 @@ const statusFixMigration = readFileSync(
   new URL("../../../supabase/migrations/202609060001_fix_linkedin_discovery_status.sql", import.meta.url),
   "utf8",
 );
+const sealedDrainMigration = readFileSync(
+  new URL("../../../supabase/migrations/202609060002_drain_sealed_linkedin_discovery.sql", import.meta.url),
+  "utf8",
+);
 
 test("career lane migration preserves legacy jobs while backfilling memberships", () => {
   assert.doesNotMatch(migration, /update\s+public\.jobs\s+set[\s\S]{0,500}archetype\s*=/i);
@@ -78,6 +82,15 @@ test("status hotfix counts committed pages for running scopes", () => {
   assert.match(statusFixMigration, /from public\.linkedin_ingestion_pages/i);
   assert.match(statusFixMigration, /sum\(page\.pages\)/i);
   assert.match(statusFixMigration, /run\.coverage_status <> 'exhausted'/i);
+});
+
+test("sealed discovery drains canonical work before another search", () => {
+  assert.match(sealedDrainMigration, /cycle\.search_status = 'sealed'/i);
+  assert.match(sealedDrainMigration, /cycle\.canonical_status = 'pending'/i);
+  assert.match(
+    sealedDrainMigration,
+    /case when cycle\.search_status = 'sealed' then cycle\.discovery_sequence end desc/i,
+  );
 });
 
 test("configuration replacement serializes and rejects stale revisions before writes", () => {
