@@ -10,6 +10,10 @@ const discoveryMigration = readFileSync(
   new URL("../../../supabase/migrations/202609050001_resume_exhaustive_linkedin_discovery.sql", import.meta.url),
   "utf8",
 );
+const statusFixMigration = readFileSync(
+  new URL("../../../supabase/migrations/202609060001_fix_linkedin_discovery_status.sql", import.meta.url),
+  "utf8",
+);
 
 test("career lane migration preserves legacy jobs while backfilling memberships", () => {
   assert.doesNotMatch(migration, /update\s+public\.jobs\s+set[\s\S]{0,500}archetype\s*=/i);
@@ -68,6 +72,12 @@ test("discovery status migration is private and terminal-evidence based", () => 
     /grant execute on function[\s\S]+get_linkedin_discovery_status\(\)[\s\S]+to service_role;/i,
   );
   assert.match(discoveryMigration, /reviewed_cross_lane_false_positive/i);
+});
+
+test("status hotfix counts committed pages for running scopes", () => {
+  assert.match(statusFixMigration, /from public\.linkedin_ingestion_pages/i);
+  assert.match(statusFixMigration, /sum\(page\.pages\)/i);
+  assert.match(statusFixMigration, /run\.coverage_status <> 'exhausted'/i);
 });
 
 test("configuration replacement serializes and rejects stale revisions before writes", () => {
