@@ -19,7 +19,12 @@ import {
 } from "lucide-react";
 
 import { ARCHETYPE_REGISTRY } from "@/lib/archetypes/registry";
-import { GEOGRAPHIES, type CareerLaneConfiguration, type ScraperConfiguration } from "@/lib/config/types";
+import {
+  GEOGRAPHIES,
+  type CareerLaneConfiguration,
+  type LinkedInDiscoveryStatus,
+  type ScraperConfiguration,
+} from "@/lib/config/types";
 
 const GEOGRAPHY_LABELS = { canada: "Canada", usa: "United States", eea: "EEA" } as const;
 
@@ -93,6 +98,39 @@ function Toggle({ label, help, checked, onChange }: {
       </span>
       <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="mt-1 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
     </label>
+  );
+}
+
+function DiscoveryStatusPanel({ status, error }: {
+  status: LinkedInDiscoveryStatus | null;
+  error: string;
+}) {
+  if (error) {
+    return <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">Operational status unavailable: {error}</div>;
+  }
+  if (!status) {
+    return <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm text-slate-500">Loading operational status...</div>;
+  }
+  const cycle = status.latest_cycle;
+  const queuedTasks = status.tasks.pending + status.tasks.retryable + status.tasks.leased;
+  return (
+    <section className="overflow-hidden rounded-3xl border border-slate-200 bg-[radial-gradient(circle_at_top_right,_#ecfeff,_transparent_42%),linear-gradient(135deg,#ffffff,#f8fafc)] p-6 shadow-sm sm:p-7">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-700">Live database state</p><h2 className="mt-1 text-xl font-bold text-slate-950">LinkedIn discovery coverage</h2></div>
+        <div className="text-sm text-slate-500">{cycle ? `Cycle ${cycle.sequence} · ${cycle.search_status}` : "No discovery cycle yet"}</div>
+      </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {[
+          ["Terminal scopes", cycle ? `${cycle.completed_scopes}/${cycle.required_scopes}` : "—"],
+          ["Running scopes", cycle?.running_scopes ?? 0],
+          ["Pages / cards", cycle ? `${cycle.pages} / ${cycle.cards}` : "—"],
+          ["Task backlog", queuedTasks],
+          ["Coverage debt", status.coverage_debt.pending + status.coverage_debt.expired],
+        ].map(([label, value]) => <div key={label} className="rounded-2xl border border-white/80 bg-white/75 px-4 py-3 shadow-sm"><div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</div><div className="mt-1 text-xl font-bold text-slate-950">{value}</div></div>)}
+      </div>
+      {status.lanes.length > 0 && <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{status.lanes.map((lane) => <div key={lane.archetype} className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-white/70 px-3 py-2 text-sm"><span className="font-semibold text-slate-700">{ARCHETYPE_REGISTRY[lane.archetype].label}</span><span className="tabular-nums text-slate-500">{lane.exhausted}/{lane.scopes} terminal</span></div>)}</div>}
+      <div className="mt-4 text-xs text-slate-500">Published generation {status.publication.generation ?? "—"} from discovery sequence {status.publication.source_discovery_sequence ?? "—"}. A scope is complete only after LinkedIn returns verified no-results evidence.</div>
+    </section>
   );
 }
 
@@ -211,6 +249,8 @@ export default function ConfigClient() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [conflicted, setConflicted] = useState(false);
+  const [discoveryStatus, setDiscoveryStatus] = useState<LinkedInDiscoveryStatus | null>(null);
+  const [statusError, setStatusError] = useState("");
   const dirty = useMemo(() => Boolean(config && JSON.stringify(config) !== baseline), [config, baseline]);
 
   const load = useCallback(async () => {
@@ -222,6 +262,15 @@ export default function ConfigClient() {
         throw new Error(body.error ?? "Could not load configuration");
       }
       setConfig(body.data); setBaseline(JSON.stringify(body.data));
+      setStatusError("");
+      try {
+        const statusResponse = await fetch("/api/config/status", { cache: "no-store" });
+        const statusBody = await statusResponse.json();
+        if (statusResponse.ok) setDiscoveryStatus(statusBody.data);
+        else setStatusError(statusBody.error ?? "Could not load status");
+      } catch (statusLoadError) {
+        setStatusError(statusLoadError instanceof Error ? statusLoadError.message : "Could not load status");
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Could not load configuration");
     } finally { setLoading(false); }
@@ -264,6 +313,8 @@ export default function ConfigClient() {
   }
 
   const updateSettings = (updates: Partial<ScraperConfiguration["settings"]>) => setConfig({ ...config, settings: { ...config.settings, ...updates } });
+  const optionValue = (name: string, fallback: number) => typeof config.settings.options[name] === "number" ? config.settings.options[name] as number : fallback;
+  const updateOption = (name: string, value: number) => updateSettings({ options: { ...config.settings.options, [name]: value } });
 
   return (
     <div className="mx-auto max-w-6xl pb-28 pt-4">
@@ -274,6 +325,8 @@ export default function ConfigClient() {
         </div>
       </div>
 
+      <div className="mt-6"><DiscoveryStatusPanel status={discoveryStatus} error={statusError} /></div>
+
       {(error || success) && <div role="status" className={`mt-5 flex items-start gap-3 rounded-2xl border p-4 text-sm ${error ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{error ? <AlertCircle className="mt-0.5 shrink-0" size={18} /> : <Check className="mt-0.5 shrink-0" size={18} />}<span className="flex-1">{error || success}</span>{conflicted && <button type="button" onClick={() => void load()} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-red-300 px-3 py-1.5 font-bold hover:bg-red-100"><RefreshCw size={14} /> Reload latest</button>}</div>}
 
       <section className="mt-7">
@@ -281,7 +334,7 @@ export default function ConfigClient() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <NumberSetting label="Lookback days" help="Age window for discovered postings." value={config.settings.lookback_days} min={1} max={365} onChange={(lookback_days) => updateSettings({ lookback_days })} />
           <NumberSetting label="Jobs per query" help="Maximum results accepted per search." value={config.settings.max_jobs_per_query} min={1} max={10000} onChange={(max_jobs_per_query) => updateSettings({ max_jobs_per_query })} />
-          <NumberSetting label="Pages per query" help="Maximum result pages requested." value={config.settings.max_pages_per_query} min={1} max={100} onChange={(max_pages_per_query) => updateSettings({ max_pages_per_query })} />
+          <NumberSetting label="Baseline pages per query" help="Initial depth target; verified no-results evidence, not this value, completes a scope." value={config.settings.max_pages_per_query} min={1} max={100} onChange={(max_pages_per_query) => updateSettings({ max_pages_per_query })} />
           <NumberSetting label="Request delay (ms)" help="Delay between provider requests." value={config.settings.request_delay_ms} min={0} max={60000} onChange={(request_delay_ms) => updateSettings({ request_delay_ms })} />
           <NumberSetting label="Concurrency" help="Search queries processed in parallel." value={config.settings.concurrent_queries} min={1} max={50} onChange={(concurrent_queries) => updateSettings({ concurrent_queries })} />
         </div>
@@ -290,6 +343,17 @@ export default function ConfigClient() {
           <Toggle label="Deduplicate jobs" checked={config.settings.deduplicate_jobs} onChange={(deduplicate_jobs) => updateSettings({ deduplicate_jobs })} />
           <Toggle label="Fetch descriptions" checked={config.settings.fetch_descriptions} onChange={(fetch_descriptions) => updateSettings({ fetch_descriptions })} />
           <Toggle label="Score jobs" checked={config.settings.score_jobs} onChange={(score_jobs) => updateSettings({ score_jobs })} />
+        </div>
+        <div className="mt-6 border-t border-slate-200 pt-5">
+          <div className="mb-3"><h3 className="font-bold text-slate-900">Bounded discovery execution</h3><p className="mt-1 text-xs text-slate-500">Coverage continues across hourly runs until every scope reaches a verified terminal response.</p></div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <NumberSetting label="Search runtime (seconds)" help="Search plus detail may not exceed 1,920 seconds." value={optionValue("max_search_runtime_seconds", 1620)} min={60} max={1920} onChange={(value) => updateOption("max_search_runtime_seconds", value)} />
+            <NumberSetting label="Detail runtime (seconds)" help="Detail-drain budget after search work." value={optionValue("max_detail_runtime_seconds", 300)} min={0} max={1200} onChange={(value) => updateOption("max_detail_runtime_seconds", value)} />
+            <NumberSetting label="Search request budget" help="Maximum physical search attempts per run." value={optionValue("max_source_http_attempts_per_run", 800)} min={1} max={10000} onChange={(value) => updateOption("max_source_http_attempts_per_run", value)} />
+            <NumberSetting label="Detail task budget" help="Maximum queued detail tasks processed per run." value={optionValue("max_detail_tasks_per_run", config.settings.max_jobs_per_query * 6)} min={0} max={10000} onChange={(value) => updateOption("max_detail_tasks_per_run", value)} />
+            <NumberSetting label="Source interval (ms)" help="Durable source-wide minimum; never lower than 2,500 ms." value={optionValue("global_request_interval_ms", Math.max(2500, config.settings.request_delay_ms))} min={2500} max={60000} onChange={(value) => updateOption("global_request_interval_ms", value)} />
+            <NumberSetting label="Recovery cap (hours)" help="Maximum outage window retained for automatic recovery." value={optionValue("outage_recovery_cap_hours", 168)} min={1} max={8760} onChange={(value) => updateOption("outage_recovery_cap_hours", value)} />
+          </div>
         </div>
       </section>
 

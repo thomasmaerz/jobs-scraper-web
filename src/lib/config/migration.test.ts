@@ -6,6 +6,10 @@ const migration = readFileSync(
   new URL("../../../supabase/migrations/202609010001_configurable_career_lanes.sql", import.meta.url),
   "utf8",
 );
+const discoveryMigration = readFileSync(
+  new URL("../../../supabase/migrations/202609050001_resume_exhaustive_linkedin_discovery.sql", import.meta.url),
+  "utf8",
+);
 
 test("career lane migration preserves legacy jobs while backfilling memberships", () => {
   assert.doesNotMatch(migration, /update\s+public\.jobs\s+set[\s\S]{0,500}archetype\s*=/i);
@@ -50,6 +54,20 @@ test("scraper configuration RPCs are restricted to service_role", () => {
       new RegExp(`revoke all on function public\\.${signature} from public, anon, authenticated;`, "i"),
     );
   }
+});
+
+test("discovery status migration is private and terminal-evidence based", () => {
+  assert.match(discoveryMigration, /create or replace function public\.get_linkedin_discovery_status\(\)/i);
+  assert.match(discoveryMigration, /run\.coverage_status <> 'exhausted'/i);
+  assert.match(
+    discoveryMigration,
+    /revoke all on function[\s\S]+get_linkedin_discovery_status\(\)[\s\S]+from public, anon, authenticated;/i,
+  );
+  assert.match(
+    discoveryMigration,
+    /grant execute on function[\s\S]+get_linkedin_discovery_status\(\)[\s\S]+to service_role;/i,
+  );
+  assert.match(discoveryMigration, /reviewed_cross_lane_false_positive/i);
 });
 
 test("configuration replacement serializes and rejects stale revisions before writes", () => {

@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { CANONICAL_ARCHETYPES } from "../archetypes/registry.ts";
-import { ConfigurationValidationError, validateConfiguration } from "./validation.ts";
+import {
+  ConfigurationValidationError,
+  effectiveLinkedInDiscoveryOptions,
+  validateConfiguration,
+} from "./validation.ts";
 
 function validConfiguration() {
   return {
@@ -46,6 +50,52 @@ test("validateConfiguration requires a server revision while preserving initial 
     () => validateConfiguration({ ...validConfiguration(), revision: undefined }),
     (error: unknown) => error instanceof ConfigurationValidationError && error.issues.some((issue) => issue.startsWith("revision must")),
   );
+});
+
+test("effectiveLinkedInDiscoveryOptions matches bounded scraper defaults", () => {
+  const settings = validateConfiguration(validConfiguration()).settings;
+
+  assert.deepEqual(effectiveLinkedInDiscoveryOptions(settings), {
+    global_request_interval_ms: 2500,
+    request_jitter_ms: 1500,
+    min_pages_per_query: 10,
+    soft_max_pages_per_query: 10,
+    hard_max_pages_per_query: 20,
+    max_adaptive_extra_requests: 20,
+    max_detail_tasks_per_run: 1500,
+    max_source_http_attempts_per_run: 800,
+    max_detail_http_attempts_per_run: 800,
+    minimum_recent_window_hours: 3,
+    indexing_overlap_hours: 6,
+    maximum_normal_window_hours: 24,
+    outage_recovery_cap_hours: 168,
+    max_search_runtime_seconds: 1620,
+    max_detail_runtime_seconds: 300,
+  });
+});
+
+test("validateConfiguration rejects unsafe adaptive relationships", () => {
+  const configuration = validConfiguration();
+  configuration.settings.options = {
+    min_pages_per_query: 8,
+    soft_max_pages_per_query: 7,
+    max_search_runtime_seconds: 1620,
+    max_detail_runtime_seconds: 301,
+  };
+
+  assert.throws(
+    () => validateConfiguration(configuration),
+    (error: unknown) => error instanceof ConfigurationValidationError
+      && error.issues.some((issue) => issue.includes("minimum <= soft <= hard"))
+      && error.issues.some((issue) => issue.includes("1920 seconds")),
+  );
+});
+
+test("validateConfiguration preserves unknown option keys", () => {
+  const configuration = validConfiguration();
+  configuration.settings.options = { provider_extension: "keep" };
+
+  assert.equal(validateConfiguration(configuration).settings.options.provider_extension, "keep");
 });
 
 test("validateConfiguration accepts and normalizes all six lanes", () => {
