@@ -22,6 +22,10 @@ const freehireBatchMigration = readFileSync(
   new URL("../../../supabase/migrations/202609060003_batch_freehire_compatibility.sql", import.meta.url),
   "utf8",
 );
+const freehireReclassificationMigration = readFileSync(
+  new URL("../../../supabase/migrations/202609070001_allow_freehire_compatibility_reclassification.sql", import.meta.url),
+  "utf8",
+);
 
 test("career lane migration preserves legacy jobs while backfilling memberships", () => {
   assert.doesNotMatch(migration, /update\s+public\.jobs\s+set[\s\S]{0,500}archetype\s*=/i);
@@ -108,6 +112,14 @@ test("Freehire compatibility batches fenced claims and persistence", () => {
   }
   assert.match(freehireBatchMigration, /public\.claim_freehire_compat_job\(/i);
   assert.match(freehireBatchMigration, /public\.persist_freehire_compat_result\(/i);
+});
+
+test("Freehire claims replace obsolete hashes under the source fence", () => {
+  assert.match(freehireReclassificationMigration, /p_expected_source_snapshot <@ to_jsonb\(j\)/i);
+  assert.doesNotMatch(
+    freehireReclassificationMigration,
+    /freehire_compat_input_hash is null or freehire_compat_input_hash = p_expected_input_hash/i,
+  );
 });
 
 test("configuration replacement serializes and rejects stale revisions before writes", () => {
