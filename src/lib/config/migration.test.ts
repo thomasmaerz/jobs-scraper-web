@@ -26,6 +26,14 @@ const freehireReclassificationMigration = readFileSync(
   new URL("../../../supabase/migrations/202609070001_allow_freehire_compatibility_reclassification.sql", import.meta.url),
   "utf8",
 );
+const laneWorkerGateMigration = readFileSync(
+  new URL("../../../supabase/migrations/202609070002_gate_lane_workers_on_included.sql", import.meta.url),
+  "utf8",
+);
+const queryNoiseMigration = readFileSync(
+  new URL("../../../supabase/migrations/202609070003_reduce_linkedin_query_noise.sql", import.meta.url),
+  "utf8",
+);
 
 test("career lane migration preserves legacy jobs while backfilling memberships", () => {
   assert.doesNotMatch(migration, /update\s+public\.jobs\s+set[\s\S]{0,500}archetype\s*=/i);
@@ -70,6 +78,31 @@ test("scraper configuration RPCs are restricted to service_role", () => {
       new RegExp(`revoke all on function public\\.${signature} from public, anon, authenticated;`, "i"),
     );
   }
+});
+
+test("lane workers process only included memberships", () => {
+  assert.equal(
+    (laneWorkerGateMigration.match(/m\.filter_status = 'included'/g) ?? []).length,
+    3,
+  );
+  assert.doesNotMatch(laneWorkerGateMigration, /m\.is_filtered is false/i);
+  assert.match(
+    laneWorkerGateMigration,
+    /revoke all on function public\.get_lane_jobs_to_score\(text,integer,text,integer\) from public, anon, authenticated/i,
+  );
+});
+
+test("relevance audit retires broad queries and stores the reduced set", () => {
+  assert.match(
+    queryNoiseMigration,
+    /update public\.career_lane_search_queries\s+set enabled = false, retired_at = coalesce\(retired_at, now\(\)\)/i,
+  );
+  assert.equal(
+    (queryNoiseMigration.match(/\('(?:technology_delivery|systems_platform_ops|network_infrastructure|datacenter_operations|ai_workflow_automation|building_controls)'\s*,/g) ?? []).length,
+    13,
+  );
+  assert.doesNotMatch(queryNoiseMigration, / OR | AND /);
+  assert.match(queryNoiseMigration, /relevance-audit-2026-09-07/);
 });
 
 test("discovery status migration is private and terminal-evidence based", () => {

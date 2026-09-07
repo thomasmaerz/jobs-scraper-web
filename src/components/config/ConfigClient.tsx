@@ -218,7 +218,7 @@ function LaneEditor({ lane, onChange }: {
 
           <div className="mt-7">
             <div className="mb-3 flex items-center justify-between gap-3">
-              <div><h3 className="font-bold text-slate-900">Search strings</h3><p className="mt-0.5 text-xs text-slate-500">Precision searches target titles. Recall searches broaden discovery.</p></div>
+              <div><h3 className="font-bold text-slate-900">Search strings</h3><p className="mt-0.5 text-xs text-slate-500">LinkedIn guest search treats these as fuzzy free text. Do not rely on Boolean operators, parentheses, or quotes as strict filters.</p></div>
               <button type="button" onClick={() => patch({ queries: [...lane.queries, { archetype: lane.archetype, query: "", query_type: "precision", language: "en", sort_order: lane.queries.length * 10 + 10, enabled: true }] })} className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100"><Plus size={15} /> Add search</button>
             </div>
             <div className="space-y-3">
