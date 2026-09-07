@@ -18,6 +18,10 @@ const sealedDrainMigration = readFileSync(
   new URL("../../../supabase/migrations/202609060002_drain_sealed_linkedin_discovery.sql", import.meta.url),
   "utf8",
 );
+const freehireBatchMigration = readFileSync(
+  new URL("../../../supabase/migrations/202609060003_batch_freehire_compatibility.sql", import.meta.url),
+  "utf8",
+);
 
 test("career lane migration preserves legacy jobs while backfilling memberships", () => {
   assert.doesNotMatch(migration, /update\s+public\.jobs\s+set[\s\S]{0,500}archetype\s*=/i);
@@ -91,6 +95,19 @@ test("sealed discovery drains canonical work before another search", () => {
     sealedDrainMigration,
     /case when cycle\.search_status = 'sealed' then cycle\.discovery_sequence end desc/i,
   );
+});
+
+test("Freehire compatibility batches fenced claims and persistence", () => {
+  for (const functionName of [
+    "claim_freehire_compat_jobs",
+    "persist_freehire_compat_results",
+    "apply_freehire_compat_metadata_batch",
+  ]) {
+    assert.match(freehireBatchMigration, new RegExp(`create or replace function public\\.${functionName}`, "i"));
+    assert.match(freehireBatchMigration, new RegExp(`revoke all on function public\\.${functionName}`, "i"));
+  }
+  assert.match(freehireBatchMigration, /public\.claim_freehire_compat_job\(/i);
+  assert.match(freehireBatchMigration, /public\.persist_freehire_compat_result\(/i);
 });
 
 test("configuration replacement serializes and rejects stale revisions before writes", () => {
