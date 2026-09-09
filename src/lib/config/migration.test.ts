@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
@@ -34,6 +35,48 @@ const queryNoiseMigration = readFileSync(
   new URL("../../../supabase/migrations/202609070003_reduce_linkedin_query_noise.sql", import.meta.url),
   "utf8",
 );
+const refinedProfilesMigration = readFileSync(
+  new URL("../../../supabase/migrations/20260909083410_apply_refined_target_profiles.sql", import.meta.url),
+  "utf8",
+);
+const refinedProfilesCorrectionMigration = readFileSync(
+  new URL("../../../supabase/migrations/20260909084057_correct_refined_target_profiles_exact_content.sql", import.meta.url),
+  "utf8",
+);
+
+function profileFilterHashes(sql: string, archetype: string) {
+  const laneBlock = Array.from(
+    sql.matchAll(
+      /update\s+public\.career_lane_definitions\s+set([\s\S]*?)where archetype = '([^']+)';/gi,
+    ),
+  ).find((match) => match[2] === archetype);
+  assert.ok(laneBlock);
+
+  return Object.fromEntries(
+    ["title_include", "title_exclude", "description_include", "description_exclude"].map(
+      (filter) => {
+        const assignment = new RegExp(
+          `\\b${filter}\\s*=\\s*array\\[([\\s\\S]*?)\\]::text\\[\\]`,
+          "i",
+        ).exec(laneBlock[1]);
+        assert.ok(assignment);
+        const values = Array.from(
+          assignment[1].matchAll(/\$([A-Za-z0-9_]+)\$([\s\S]*?)\$\1\$/g),
+          (match) => match[2],
+        );
+        const postgresJson = `[${values.map((value) => JSON.stringify(value)).join(", ")}]`;
+
+        return [
+          filter,
+          {
+            count: values.length,
+            md5: createHash("md5").update(postgresJson).digest("hex"),
+          },
+        ];
+      },
+    ),
+  );
+}
 
 test("career lane migration preserves legacy jobs while backfilling memberships", () => {
   assert.doesNotMatch(migration, /update\s+public\.jobs\s+set[\s\S]{0,500}archetype\s*=/i);
@@ -103,6 +146,127 @@ test("relevance audit retires broad queries and stores the reduced set", () => {
   );
   assert.doesNotMatch(queryNoiseMigration, / OR | AND /);
   assert.match(queryNoiseMigration, /relevance-audit-2026-09-07/);
+});
+
+test("refined profile migration is guarded, target-only, and audited", () => {
+  const updatedLanes = Array.from(
+    refinedProfilesMigration.matchAll(
+      /update\s+public\.career_lane_definitions[\s\S]*?where archetype = '([^']+)';/gi,
+    ),
+    (match) => match[1],
+  );
+
+  assert.deepEqual(updatedLanes, ["technology_delivery", "ai_workflow_automation"]);
+  assert.doesNotMatch(refinedProfilesMigration, /career_lane_search_queries/i);
+  assert.match(
+    refinedProfilesMigration,
+    /\(\?=\.\*\\b\(\?:professional\\s\+services[\s\S]+\(\?=\.\*\\b\(\?:software\|cloud\|technology/,
+  );
+  assert.match(
+    refinedProfilesMigration,
+    /production \.\{0,30\}\(\?:LLM\|agentic\|AI\)[\s\S]+\(\?=\.\*\\b\(\?:tasks\?\|real users\?/,
+  );
+
+  const revisionGuard = refinedProfilesMigration.indexOf(
+    "if current_revision_id is distinct from 9 then",
+  );
+  const firstLaneUpdate = refinedProfilesMigration.indexOf(
+    "update public.career_lane_definitions",
+  );
+  assert.ok(revisionGuard >= 0 && revisionGuard < firstLaneUpdate);
+  assert.match(refinedProfilesMigration, /if new_revision_id is distinct from 10 then/i);
+  assert.match(
+    refinedProfilesMigration,
+    /insert into public\.career_lane_config_revisions \(source, actor_email, configuration\)\s+values \('migration', 'profile-refinement-2026-09-08', public\.get_scraper_configuration\(\)\)/i,
+  );
+  assert.match(
+    refinedProfilesMigration,
+    /returning revision_id into new_revision_id;[\s\S]+update public\.career_lane_config_revisions\s+set configuration = public\.get_scraper_configuration\(\)/i,
+  );
+});
+
+test("exact local refined profiles replay without a second revision or correction", () => {
+  const accidentalPattern = "creat(?:e|es|ed|ing)?";
+  const exactPattern = "creat(?:e|es|ed|ing)";
+  const revisionGuard = refinedProfilesCorrectionMigration.indexOf(
+    "if current_revision_id is distinct from 10 then",
+  );
+  const laneExistenceGuard = refinedProfilesCorrectionMigration.indexOf(
+    "if not lane_exists then",
+  );
+  const snapshotExistenceGuard = refinedProfilesCorrectionMigration.indexOf(
+    "if not revision_snapshot_exists then",
+  );
+  const noCorrectionBranch = refinedProfilesCorrectionMigration.indexOf(
+    "if replacement_count = 0 then",
+  );
+  const invalidCountGuard = refinedProfilesCorrectionMigration.indexOf(
+    "if replacement_count <> 3 then",
+  );
+  const laneUpdate = refinedProfilesCorrectionMigration.indexOf(
+    "update public.career_lane_definitions d",
+  );
+  const correctedLanes = Array.from(
+    refinedProfilesCorrectionMigration.matchAll(
+      /update\s+public\.career_lane_definitions[\s\S]*?where d\.archetype = '([^']+)';/gi,
+    ),
+    (match) => match[1],
+  );
+
+  assert.ok(revisionGuard >= 0 && revisionGuard < laneUpdate);
+  assert.ok(laneExistenceGuard > revisionGuard && laneExistenceGuard < noCorrectionBranch);
+  assert.ok(snapshotExistenceGuard > laneExistenceGuard && snapshotExistenceGuard < noCorrectionBranch);
+  assert.ok(noCorrectionBranch > snapshotExistenceGuard && noCorrectionBranch < invalidCountGuard);
+  assert.ok(invalidCountGuard < laneUpdate);
+  assert.deepEqual(correctedLanes, ["ai_workflow_automation"]);
+  assert.equal(refinedProfilesMigration.split(accidentalPattern).length - 1, 0);
+  assert.equal(refinedProfilesMigration.split(exactPattern).length - 1, 5);
+  assert.match(
+    refinedProfilesCorrectionMigration,
+    /if replacement_count = 0 then\s+return;\s+end if;/i,
+  );
+  assert.match(refinedProfilesCorrectionMigration, /select coalesce\(\s+sum\(/i);
+  assert.match(
+    refinedProfilesCorrectionMigration,
+    /if replacement_count <> 3 then\s+raise exception 'Expected 0 or 3 exact-content corrections but found %'/i,
+  );
+  assert.match(
+    refinedProfilesCorrectionMigration,
+    /replace\(value, 'creat\(\?:e\|es\|ed\|ing\)\?', 'creat\(\?:e\|es\|ed\|ing\)'\)/,
+  );
+  assert.match(
+    refinedProfilesCorrectionMigration,
+    /where d\.archetype = 'ai_workflow_automation'/i,
+  );
+  assert.doesNotMatch(refinedProfilesCorrectionMigration, /career_lane_search_queries/i);
+  assert.doesNotMatch(
+    refinedProfilesCorrectionMigration,
+    /insert\s+into\s+public\.career_lane_config_revisions/i,
+  );
+  assert.match(
+    refinedProfilesCorrectionMigration,
+    /update public\.career_lane_config_revisions\s+set configuration = public\.get_scraper_configuration\(\)\s+where revision_id = 10/i,
+  );
+  assert.equal(
+    (
+      `${refinedProfilesMigration}\n${refinedProfilesCorrectionMigration}`.match(
+        /insert\s+into\s+public\.career_lane_config_revisions/gi,
+      ) ?? []
+    ).length,
+    1,
+  );
+  assert.deepEqual(profileFilterHashes(refinedProfilesMigration, "technology_delivery"), {
+    title_include: { count: 4, md5: "9413e1809eeafd1e13813bce40e53c44" },
+    title_exclude: { count: 4, md5: "ecd1d7bd76b68ed48c9e1701fb0fbd24" },
+    description_include: { count: 4, md5: "3f6014eeb4be3f103e1518302a2ddd4a" },
+    description_exclude: { count: 0, md5: "d751713988987e9331980363e24189ce" },
+  });
+  assert.deepEqual(profileFilterHashes(refinedProfilesMigration, "ai_workflow_automation"), {
+    title_include: { count: 3, md5: "2987c57cbdbad69fc819551cce86626e" },
+    title_exclude: { count: 2, md5: "c4a536818bfb890329d7b55bd8d8dc5a" },
+    description_include: { count: 14, md5: "63a465823ddc8e5d21f08c93bc763363" },
+    description_exclude: { count: 0, md5: "d751713988987e9331980363e24189ce" },
+  });
 });
 
 test("discovery status migration is private and terminal-evidence based", () => {
